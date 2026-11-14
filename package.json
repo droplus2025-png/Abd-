@@ -1,0 +1,8 @@
+{
+  "name": "pos-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Atomic accounting engine for the PWA POS (offline-first, flat files)",
+  "main": "index.js",
+  "scripts": { "test": "node --test" }
+}
