@@ -337,3 +337,18 @@ test('persistence hook: only changed rows are saved, a failing disk rolls the op
   const rebuilt = createMemoryStore(store.export());
   assert.deepEqual(rebuilt.export(), store.export());
 });
+
+test('invoice search (number, name, phone) and already-returned quantities', async () => {
+  const w = await world();
+  const { nails } = await stocked(w);
+  const s = await w.emp.sale({ lines: [{ productId: nails.id, qty: 4 }], paid: '5', customer: { name: 'Karim', phone: '0600000001' } });
+  await w.emp.customerReturn({ invoice: s.invoice.id, lines: [{ originLineId: s.lines[0].id, qty: 1 }] });
+  const byName = await w.emp.reports.searchInvoices({ text: 'kar', types: ['sale', 'quick_sale'] });
+  assert.equal(byName.length, 1); assert.equal(byName[0].party_name, 'Karim');
+  assert.equal((await w.emp.reports.searchInvoices({ text: '0600000001', types: ['sale'] })).length, 1);
+  assert.equal((await w.emp.reports.searchInvoices({ text: s.invoice.invoice_no, types: ['sale'] })).length, 1);
+  assert.equal((await w.emp.reports.searchInvoices({ text: 'nobody', types: ['sale'] })).length, 0);
+  const d = await w.emp.reports.invoice(s.invoice.id);
+  assert.equal(d.lines[0].returned, 1000);
+  assert.equal(d.party.name, 'Karim');
+});

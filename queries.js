@@ -2,6 +2,7 @@
 import { lineCents } from './money.js';
 import { getSetting, checkInvoice, remainingDebt, openInvoices, GOODS_TYPES } from './post.js';
 import { dayParts } from './invoice-number.js';
+import { normPhone } from './phone.js';
 
 export const cashBalance = async (tx) => (await tx.all('cash_ledger')).reduce((a, c) => a + c.amount, 0);
 export const stockValue = async (tx) => (await tx.find('products', p => !p.deleted_at))
@@ -42,6 +43,24 @@ export function queriesApi(ctx) {
         return rows.map(i => strip(ctx, i));
       });
     },
+    // find invoices by number, or by the name / phone of the customer or supplier (used by the return screens)
+    async searchInvoices({ text = '', types, limit = 30 } = {}) {
+      if (!ctx.access.can('view_invoices') && !ctx.access.can('return_customer') && !ctx.access.can('return_supplier')) ctx.access.require('view_invoices');
+      const t = String(text).trim().toLowerCase();
+      const digits = t.replace(/\D/g, '');                         // 0600000001 / +212600000001 / 600000001 all match
+      const nums = [...new Set([digits, digits.replace(/^0+/, ''), normPhone(digits)])].filter((x) => x && x.length >= 3);
+      return store.transaction(async (tx) => {
+        const parties = new Map([...(await tx.all('customers')), ...(await tx.all('suppliers'))].map(p => [p.id, p]));
+        const rows = [];
+        for (const i of (await tx.find('invoices', x => !types || types.includes(x.type))).sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+          const p = parties.get(i.customer_id || i.supplier_id);
+          const hit = !t || i.invoice_no.includes(t) || (p && (p.name.toLowerCase().includes(t) || nums.some((n) => p.phone_norm.includes(n))));
+          if (hit) rows.push({ ...strip(ctx, i), party_name: p?.name ?? null, party_phone: p?.phone ?? null });
+          if (rows.length >= limit) break;
+        }
+        return rows;
+      });
+    },
     async invoice(idOrNo) {
       ctx.access.require('view_invoices');
       return store.transaction(async (tx) => {
@@ -50,7 +69,10 @@ export function queriesApi(ctx) {
         const lines = (await tx.find('invoice_lines', l => l.invoice_id === inv.id)).sort((a, b) => a.line_no - b.line_no);
         const returns = await tx.find('invoices', r => r.parent_invoice_id === inv.id);
         const remaining = await remainingDebt(tx, inv);
-        return { invoice: strip(ctx, inv), lines: lines.map(l => stripLine(ctx, l)), returns: returns.map(r => strip(ctx, r)), remaining };
+        const allLines = await tx.all('invoice_lines');
+        const returned = (id) => allLines.filter(x => x.origin_line_id === id).reduce((a, x) => a + x.qty, 0);   // already returned quantity
+        const party = inv.customer_id ? await tx.get('customers', inv.customer_id) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
+        return { invoice: strip(ctx, inv), party, lines: lines.map(l => ({ ...stripLine(ctx, l), returned: returned(l.id) })), returns: returns.map(r => strip(ctx, r)), remaining };
       });
     },
 

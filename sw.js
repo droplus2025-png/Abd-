@@ -5,7 +5,7 @@ const FILES = ['./', 'index.html', 'style.css', 'app.js', 'version.js', 'logo.pn
   'manifest.webmanifest', 'idb-persist.js', 'index.js', 'errors.js', 'money.js', 'phone.js', 'invoice-number.js',
   'memory-store.js', 'permissions.js', 'auth.js', 'post.js', 'parties.js', 'products.js', 'sales.js', 'purchases.js',
   'returns.js', 'payments.js', 'cash.js', 'queries.js', 'settings.js', 'invoice-text.js', 'share.js', 'admin.js',
-  'ui-core.js', 'ui-login.js', 'ui-home.js', 'ui-sale.js', 'ui-stock.js', 'ui-admin.js'];
+  'ui-core.js', 'ui-login.js', 'ui-home.js', 'ui-sale.js', 'ui-purchase.js', 'ui-returns.js', 'ui-stock.js', 'ui-admin.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

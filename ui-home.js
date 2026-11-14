@@ -10,7 +10,7 @@ const TILES = [
 ];
 const PERM = { stock: 'view_stock', purchase: 'purchase', expenses: 'expense', supret: 'return_supplier', custret: 'return_customer',
   customers: 'collect_debt', suppliers: 'pay_supplier', cash: 'cash_count', invoices: 'view_invoices' };
-const LIVE = { sell: 'sale', stock: 'stock', admin: 'admin' };
+const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }] };
 
 export function renderHome(app) {
   const p = app.session.permissions, owner = app.session.role === 'owner';
@@ -29,7 +29,7 @@ export function renderHome(app) {
     </div></div>`);
   document.querySelectorAll('.tile').forEach((b) => b.addEventListener('click', () => {
     const id = b.dataset.id;
-    if (LIVE[id]) app.go(LIVE[id]); else app.go('soon', { title: TILES.find((t) => t[0] === id)?.[1] || 'قريباً' });
+    if (LIVE[id]) app.go(...LIVE[id]); else app.go('soon', { title: TILES.find((t) => t[0] === id)?.[1] || 'قريباً' });
   }));
   $('#out').onclick = () => app.logout();
 }
