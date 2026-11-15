@@ -7,6 +7,10 @@ import { postInvoice, remainingDebt } from './post.js';
 async function loadParent(tx, ref, allowed) {
   const inv = (await tx.find('invoices', i => i.id === ref || i.invoice_no === ref))[0];
   if (!inv) fail('INVOICE_NOT_FOUND', 'Original invoice not found');
+  if (inv.type === 'quick_sale') {                           // a detailed quick sale is returned through its detail lines
+    const d = (await tx.find('invoices', i => i.type === 'quick_detail' && i.parent_invoice_id === inv.id))[0];
+    if (d) return d;
+  }
   if (!allowed.includes(inv.type)) fail('BAD_PARENT', 'This invoice cannot be returned this way', { type: inv.type });
   return inv;
 }
@@ -34,7 +38,7 @@ export function returnsApi(ctx) {
     async customerReturn(input) {
       ctx.access.require('return_customer');
       return store.transaction(async (tx) => {
-        const parent = await loadParent(tx, input.invoice, ['sale', 'quick_sale']);
+        const parent = await loadParent(tx, input.invoice, ['sale', 'quick_sale', 'quick_detail']);
         const lines = await buildReturnLines(tx, parent, input);
         const total = lines.reduce((a, l) => a + lineCents(l.qty, l.unit_price), 0);
         const costTotal = lines.reduce((a, l) => a + lineCents(l.qty, l.unit_cost), 0);

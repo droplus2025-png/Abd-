@@ -10,7 +10,8 @@ const TILES = [
 ];
 const PERM = { stock: 'view_stock', purchase: 'purchase', expenses: 'expense', supret: 'return_supplier', custret: 'return_customer',
   customers: 'collect_debt', suppliers: 'pay_supplier', cash: 'cash_count', invoices: 'view_invoices' };
-const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }] };
+const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }],
+  invoices: ['invoices'], customers: ['debts', { mode: 'customer' }], suppliers: ['debts', { mode: 'supplier' }] };
 
 export function renderHome(app) {
   const p = app.session.permissions, owner = app.session.role === 'owner';

@@ -8,10 +8,12 @@ import { renderHome, renderSoon } from './ui-home.js';
 import { renderSale } from './ui-sale.js';
 import { renderPurchase } from './ui-purchase.js';
 import { renderReturn } from './ui-returns.js';
+import { renderInvoices } from './ui-invoices.js';
+import { renderDebts } from './ui-debts.js';
 import { renderStock } from './ui-stock.js';
 import { renderAdmin } from './ui-admin.js';
 
-const SCREENS = { login: renderLogin, setup: renderSetup, home: renderHome, soon: renderSoon, sale: renderSale, purchase: renderPurchase, return: renderReturn, stock: renderStock, admin: renderAdmin };
+const SCREENS = { login: renderLogin, setup: renderSetup, home: renderHome, soon: renderSoon, sale: renderSale, purchase: renderPurchase, return: renderReturn, invoices: renderInvoices, debts: renderDebts, stock: renderStock, admin: renderAdmin };
 export const app = { screen: null, updatePending: false };
 
 const deviceId = localStorage.getItem('pos_device_id') || (() => { const id = crypto.randomUUID(); localStorage.setItem('pos_device_id', id); return id; })();

@@ -6,7 +6,7 @@ const GROUPS = { sales: 'البيع', purchases: 'الشراء', returns: 'ال�
 
 export async function renderAdmin(app) {
   const eng = app.engine, auth = app.auth, S = app.session, c = app.cfg;
-  mount(`<div class="screen">${header('الإدارة')}<div class="body" id="b"></div></div>`);
+  mount(`<div class="screen">${header('الإدارة')}<div class="body cards" id="b"></div></div>`);
   $('#hdrBack').onclick = () => app.go('home');
 
   async function draw() {

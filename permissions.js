@@ -4,6 +4,7 @@ import { fail } from './errors.js';
 
 export const CATALOG = [
   ['sell', 'sales', 'البيع', true, true], ['quick_sale', 'sales', 'البيع السريع', true, true],
+  ['detail_quick_sale', 'sales', 'إضافة تفاصيل المنتجات إلى فاتورة بيع سريع', true, true],
   ['external_product', 'sales', 'منتج خارجي (حسب الطلب)', true, false],
   ['edit_sale_price', 'sales', 'تعديل سعر البيع في السلة', true, false],
   ['sell_below_cost', 'sales', 'البيع بأقل من التكلفة', true, true],
@@ -24,7 +25,7 @@ const KEYS = new Set(CATALOG.map(p => p.key));
 export const isPermissionKey = (k) => KEYS.has(k);
 
 const TYPE_PERM = {
-  sale: 'sell', quick_sale: 'quick_sale', purchase: 'purchase', return_customer: 'return_customer',
+  sale: 'sell', quick_sale: 'quick_sale', quick_detail: 'detail_quick_sale', purchase: 'purchase', return_customer: 'return_customer',
   return_supplier: 'return_supplier', expense: 'expense', collect: 'collect_debt', pay_supplier: 'pay_supplier',
   deposit: 'cash_deposit_withdraw', withdrawal: 'cash_deposit_withdraw',
   opening_debt_customer: 'add_previous_debt', opening_debt_supplier: 'add_previous_debt', cash_adjustment: 'cash_count',

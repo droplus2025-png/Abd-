@@ -20,6 +20,8 @@ const ERR = {
   BAD_NUMBER: 'رقم غير صالح', TOO_MANY_DECIMALS: 'عدد الخانات العشرية أكثر من المسموح', RETURN_EXCEEDS: 'الكمية أكبر من المباعة',
   STOCK_INSUFFICIENT: 'المخزون لا يكفي', NOT_SETUP: 'لم يتم إنشاء حساب المالك بعد', ALREADY_SETUP: 'حساب المالك موجود',
   CHECK_FAILED: 'خطأ في توازن الأرقام، لم تُحفظ العملية',
+  ALREADY_DETAILED: 'تمت إضافة تفاصيل هذه الفاتورة من قبل', HAS_RETURNS: 'لا يمكن تفصيل فاتورة تم إرجاعها',
+  BAD_PARENT: 'هذه الفاتورة لا تقبل هذه العملية', CANNOT_ALLOCATE: 'تعذّر توزيع المبلغ على هذه الكميات', INVOICE_NOT_FOUND: 'الفاتورة غير موجودة',
 };
 export const errText = (e) => ERR[e?.code] || e?.message || 'حدث خطأ';
 
@@ -54,3 +56,8 @@ export const money = (cents) => {
 };
 export const price4 = (p) => (p / 10000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 export const qtyStr = (q) => (q / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+
+export const TYPE_AR = { sale: 'بيع', quick_sale: 'بيع سريع', quick_detail: 'تفصيل', purchase: 'شراء', deposit: 'إيداع', withdrawal: 'سحب',
+  expense: 'مصروف', return_customer: 'إرجاع من زبون', return_supplier: 'إرجاع للمورد', collect: 'قبض دين', pay_supplier: 'دفع للمورد',
+  opening_debt_customer: 'دين سابق', opening_debt_supplier: 'مستحق سابق', cash_adjustment: 'تسوية الصندوق' };
+export const fmtWhen = (iso) => new Date(iso).toLocaleString('ar-MA-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });

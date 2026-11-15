@@ -9,7 +9,7 @@ export async function renderPurchase(app) {
   let sel = null;          // selected product, or {isNew:true, name}
   const createdNew = new Map();   // new products already created by a previous (failed) attempt: reuse them, never create twice
 
-  mount(`<div class="screen">${header('شراء')}<div class="body">
+  mount(`<div class="screen">${header('شراء')}<div class="body"><div class="twocol"><div class="c1">
     <div class="row"><input id="sn" class="inp" placeholder="اسم المورد" list="sl" style="flex:1.2" autocomplete="off">
       <input id="sp" class="inp" inputmode="tel" placeholder="هاتف المورد" style="flex:1"></div>
     <datalist id="sl">${suppliers.map((s) => `<option value="${esc(s.name)}">${esc(s.phone)}</option>`).join('')}</datalist>
@@ -17,10 +17,10 @@ export async function renderPurchase(app) {
       <input id="pk" class="inp" placeholder="🔍 رقم المنتج أو اسمه" autocomplete="off">
       <div id="sug"></div><div id="picked" class="muted"></div>
       <div class="row"><input id="qt" class="inp" inputmode="decimal" placeholder="الكمية"><input id="pa" class="inp" inputmode="decimal" placeholder="سعر الشراء"><input id="pv" class="inp" inputmode="decimal" placeholder="سعر البيع"></div>
-      <button class="btn gold" id="addl">إضافة</button></div>
+      <button class="btn gold" id="addl">إضافة</button></div></div><div class="c2">
     <div id="list" style="flex:1;overflow:auto;min-height:0"></div>
     <div class="payrow"><button class="btn teal" id="pay" disabled>تأكيد</button><div class="totalbox"><div class="l">الإجمالي</div><div class="v" id="tot">0</div></div></div>
-  </div></div>`);
+  </div></div></div></div>`);
   $('#hdrBack').onclick = async () => { if (lines.length && !(await confirmBox('قائمة الشراء غير فارغة', 'الخروج دون حفظ؟', 'خروج', 'بقاء'))) return; app.go('home'); };
 
   const safe = (fn, d = 0) => { try { return fn(); } catch { return d; } };

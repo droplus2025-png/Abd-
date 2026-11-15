@@ -15,7 +15,8 @@ export function shareApi(ctx) {
       return store.transaction(async (tx) => {
         const inv = (await tx.find('invoices', i => i.id === idOrNo || i.invoice_no === idOrNo))[0];
         if (!inv) fail('INVOICE_NOT_FOUND', 'Invoice not found');
-        const lines = (await tx.find('invoice_lines', l => l.invoice_id === inv.id)).sort((a, b) => a.line_no - b.line_no);
+        const detail = inv.type === 'quick_sale' ? (await tx.find('invoices', d => d.type === 'quick_detail' && d.parent_invoice_id === inv.id))[0] : null;
+        const lines = (await tx.find('invoice_lines', l => l.invoice_id === (detail || inv).id)).sort((a, b) => a.line_no - b.line_no);
         const party = inv.customer_id ? await tx.get('customers', inv.customer_id) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
         const parent = inv.parent_invoice_id ? await tx.get('invoices', inv.parent_invoice_id) : null;
         const text = renderInvoice({ invoice: inv, lines, party, parentNo: parent?.invoice_no, settings: s });

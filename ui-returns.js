@@ -6,7 +6,7 @@ import { money as M } from './index.js';
 export async function renderReturn(app, { mode = 'customer' } = {}) {
   const eng = app.engine, cust = mode === 'customer';
   const types = cust ? ['sale', 'quick_sale'] : ['purchase'];
-  mount(`<div class="screen">${header(cust ? 'إرجاع من زبون' : 'إرجاع للمورد')}<div class="body">
+  mount(`<div class="screen">${header(cust ? 'إرجاع من زبون' : 'إرجاع للمورد')}<div class="body col">
     <input id="q" class="inp" placeholder="🔍 رقم الفاتورة أو اسم / هاتف ${cust ? 'الزبون' : 'المورد'}" autocomplete="off">
     <div id="main" style="flex:1;overflow:auto;min-height:0;display:flex;flex-direction:column;gap:8px"></div>
     <div id="foot"></div></div></div>`);

@@ -11,13 +11,18 @@ export async function renderSale(app) {
   let busy = false;
 
   mount(`<div class="screen">${header('بيع')}
-    <div class="body">
-      <div class="row"><input id="q" class="inp" placeholder="🔍 بحث بالاسم أو بالرقم" style="flex:1" autocomplete="off">
-        <button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
-      <div id="quickbox" class="quick"><span class="muted">بيع سريع</span><span class="v" id="qv">0</span></div>
-      <div id="main" style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
-      <div class="payrow"><button class="btn teal" id="pay">دفع</button>
-        <div class="totalbox"><div class="l">الإجمالي</div><div class="v" id="tot">0</div></div></div>
+    <div class="body salegrid">
+      <div class="colA">
+        <div class="row"><input id="q" class="inp" placeholder="🔍 بحث بالاسم أو بالرقم" style="flex:1" autocomplete="off">
+          <button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
+        <div id="resA" class="resA"></div>
+      </div>
+      <div class="colB">
+        <div id="quickbox" class="quick"><span class="muted">بيع سريع</span><span class="v" id="qv">0</span></div>
+        <div id="main" style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
+        <div class="payrow"><button class="btn teal" id="pay">دفع</button>
+          <div class="totalbox"><div class="l">الإجمالي</div><div class="v" id="tot">0</div></div></div>
+      </div>
     </div></div>`);
 
   const main = $('#main');
@@ -32,13 +37,22 @@ export async function renderSale(app) {
   function refreshTotals() { $('#tot').textContent = money(total()); $('#qv').textContent = quick || '0'; $('#pay').disabled = busy || total() <= 0; }
 
   // ---- what the middle area shows
+  const mq = window.matchMedia('(min-width: 900px)');       // touch-screen computer: list on one side, cart / keypad on the other
   function draw() {
     refreshTotals();
+    if (mq.matches) {
+      $('#quickbox').style.display = cart.length ? 'none' : 'flex';
+      drawResults($('#resA'));
+      return cart.length ? drawCart() : drawKeypad();
+    }
+    $('#resA').innerHTML = '';
     $('#quickbox').style.display = cart.length || query || searching ? 'none' : 'flex';
-    if (query || searching) return drawResults();
+    if (query || searching) return drawResults(main);
     if (cart.length) return drawCart();
     drawKeypad();
   }
+  const onMq = () => { if (!document.contains(main)) { mq.removeEventListener('change', onMq); return; } draw(); };   // never draw on a screen that was left
+  mq.addEventListener('change', onMq);
   function drawKeypad() {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '.'];
     main.innerHTML = `<div class="keypad">${keys.map((k) => `<button class="key" data-k="${k}">${k}</button>`).join('')}</div>`;
@@ -65,14 +79,14 @@ export async function renderSale(app) {
       row.querySelector('.x').addEventListener('click', () => { cart.splice(Number(row.dataset.i), 1); draw(); });
     });
   }
-  async function drawResults() {
-    const rows = await eng.products.search(query, 40);
-    if (!(query || searching)) return;
-    main.innerHTML = `<div class="results">${rows.length ? rows.map((p) => `
+  async function drawResults(target) {
+    const rows = await eng.products.search(query, mq.matches ? 80 : 40);
+    if (!mq.matches && !(query || searching)) return;
+    target.innerHTML = `<div class="results">${rows.length ? rows.map((p) => `
       <button class="res" data-id="${p.id}"><span class="sku">${p.sku}</span><span>${esc(p.name)}</span>
       <span class="muted">${price4(p.purchase_price)}</span><span class="p">${price4(p.sale_price)}</span></button>`).join('')
       : '<div class="muted" style="padding:14px">لا نتائج</div>'}</div>`;
-    main.querySelectorAll('.res').forEach((b) => b.addEventListener('click', () => addProduct(rows.find((r) => r.id === b.dataset.id))));
+    target.querySelectorAll('.res').forEach((b) => b.addEventListener('click', () => addProduct(rows.find((r) => r.id === b.dataset.id))));
   }
 
   function addProduct(p) {

@@ -352,3 +352,77 @@ test('invoice search (number, name, phone) and already-returned quantities', asy
   assert.equal(d.lines[0].returned, 1000);
   assert.equal(d.party.name, 'Karim');
 });
+
+test('quick sale details: total untouched, real profit replaces the flat %, stock out, returns on detail lines', async () => {
+  const { allocate, priceFor } = await import('./quick-detail.js');
+  assert.deepEqual(allocate(100, [1, 1, 1]), [34, 33, 33]);
+  assert.equal(allocate(50000, [9000, 20000, 12000]).reduce((a, b) => a + b, 0), 50000);
+  assert.equal(money.lineCents(3000, priceFor(1097, 3000)), 1097);
+
+  const w = await world();
+  const A = await w.owner.products.create({ name: 'A', purchasePrice: '10', salePrice: '30', qty: '100' });
+  const B = await w.owner.products.create({ name: 'B', purchasePrice: '20', salePrice: '50', qty: '100' });
+  const C = await w.owner.products.create({ name: 'C', purchasePrice: '5', salePrice: '12', qty: '100' });
+  const q = await w.emp.quickSale('500');                                  // flat 20 % -> profit 100
+  assert.equal(q.invoice.profit, 10000);
+  const cashBefore = await w.owner.reports.cashBalance();
+  const input = { invoice: q.invoice.invoice_no, lines: [{ productId: A.id, qty: 3 }, { productId: B.id, qty: 4 }, { productId: C.id, qty: 10 }] };
+
+  const before = w.store.export();
+  const pv = await w.emp.previewQuickDetail(input);
+  assert.deepEqual(w.store.export(), before);                              // a preview writes nothing
+  assert.equal(pv.lines.reduce((a, l) => a + l.line_total, 0), 50000);     // adds up EXACTLY to the total
+  assert.equal(pv.real_profit, 34000);                                     // 500 - (3x10 + 4x20 + 10x5)
+
+  const d = await w.emp.detailQuickSale(input);
+  assert.equal(d.invoice.invoice_no, `${q.invoice.invoice_no}-D`);
+  assert.equal(d.invoice.total, 50000);
+  assert.equal(await w.owner.reports.cashBalance(), cashBefore);           // no cash moves
+  const [day] = await w.owner.reports.dailyReport();
+  assert.equal(day.gross_profit, 34000);                                   // real profit, the flat 100 is cancelled
+  assert.equal(day.sales_total, 50000); assert.equal(day.sales_count, 1);
+  const stock = Object.fromEntries((await w.owner.products.search('', 10)).map(p => [p.name, p.qty]));
+  assert.deepEqual(stock, { A: 97000, B: 96000, C: 90000 });
+  const view = await w.emp.reports.invoice(q.invoice.id);
+  assert.equal(view.has_detail, true); assert.equal(view.lines.length, 3); assert.equal(view.real_profit, 34000);
+  assert.equal(view.invoice.is_modified, true);
+  assert.equal((await w.emp.reports.invoices()).filter(i => i.type === 'quick_detail').length, 0);   // internal record is hidden
+  await rejects(w.emp.detailQuickSale(input), 'ALREADY_DETAILED');
+  const msg = await w.emp.share.invoiceMessage(q.invoice.invoice_no);
+  assert.match(msg.text, /1\. A/); assert.match(msg.text, /Montant total : 500 DH/);
+
+  // returning one A through the ORIGINAL number works on the detail lines, at the real cost
+  const ret = await w.emp.customerReturn({ invoice: q.invoice.invoice_no, lines: [{ originLineId: view.lines[0].id, qty: 1 }] });
+  assert.ok(ret.refunded >= 3658 && ret.refunded <= 3659);                 // 1/3 of the 109.75 shared to A
+  assert.equal(ret.invoice.parent_invoice_id, d.invoice.id);
+  assert.equal((await w.owner.products.search('1'))[0].qty, 98000);
+  assert.deepEqual(await w.owner.reports.integrityCheck(), []);
+
+  // a quick sale that was already returned as a lump cannot be detailed afterwards
+  const q2 = await w.emp.quickSale('100');
+  await w.emp.customerReturn({ invoice: q2.invoice.id, lines: [{ originLineId: q2.lines[0].id, qty: 1 }] });
+  await rejects(w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'HAS_RETURNS');
+  // only a quick sale can be detailed, and the permission can be taken away
+  const s = await w.emp.sale({ lines: [{ productId: A.id, qty: 1 }] });
+  await rejects(w.emp.detailQuickSale({ invoice: s.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'BAD_PARENT');
+  await w.auth.setUserPermission(w.ownerS, w.empS.userId, 'detail_quick_sale', false);
+  const emp2 = createEngine({ store: w.store, session: await w.auth.login('5678'), now: w.now });
+  const q3 = await emp2.quickSale('50');
+  await rejects(emp2.detailQuickSale({ invoice: q3.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'PERMISSION_DENIED');
+});
+
+test('party statement: every invoice of a customer with what is still owed', async () => {
+  const w = await world();
+  const { nails } = await stocked(w);
+  const who = { name: 'Karim', phone: '0600000001' };
+  const a = await w.emp.sale({ lines: [{ productId: nails.id, qty: 2 }], paid: '4', customer: who });   // owes 6
+  await w.emp.sale({ lines: [{ productId: nails.id, qty: 4 }], paid: '0', customer: who });             // owes 20
+  const cust = (await w.emp.reports.customers())[0];
+  await w.emp.collect({ id: cust.id }, '10');                                                           // oldest first: 6 then 4
+  const st = await w.emp.reports.partyStatement({ customer_id: cust.id });
+  const by = Object.fromEntries(st.map(i => [i.type + ':' + i.total, i.remaining]));
+  assert.equal(st.length, 3);
+  assert.equal(by['sale:1000'], 0);                                                                      // first invoice settled
+  assert.equal(by['sale:2000'], 1600);                                                                   // 20 - 4
+  assert.equal(by['collect:1000'], 0);
+});

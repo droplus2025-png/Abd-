@@ -6,8 +6,8 @@ import { fail } from './errors.js';
 import { lineCents, wac } from './money.js';
 import { nextInvoiceNo, uniqueInvoiceNo } from './invoice-number.js';
 
-export const STOCK_SIGN = { sale: -1, purchase: 1, return_customer: 1, return_supplier: -1 };
-export const GOODS_TYPES = new Set(['sale', 'quick_sale', 'purchase', 'return_customer', 'return_supplier']);
+export const STOCK_SIGN = { sale: -1, quick_detail: -1, purchase: 1, return_customer: 1, return_supplier: -1 };
+export const GOODS_TYPES = new Set(['sale', 'quick_sale', 'quick_detail', 'purchase', 'return_customer', 'return_supplier']);
 export const DEBT_TYPES = new Set(['sale', 'purchase', 'opening_debt_customer', 'opening_debt_supplier']);
 const INCOMING = new Set(['purchase', 'initial', 'import']);
 
@@ -43,7 +43,7 @@ export async function postInvoice(ctx, tx, d) {
   const nos = (await tx.all('invoices')).map(i => i.invoice_no);
   const tz = await getSetting(tx, 'timezone', 'Africa/Casablanca');
   const invoice = {
-    id: ctx.ids(), invoice_no: uniqueInvoiceNo(nos, nextInvoiceNo(nos, t, tz)), type: d.type,
+    id: ctx.ids(), invoice_no: uniqueInvoiceNo(nos, d.invoice_no || nextInvoiceNo(nos, t, tz)), type: d.type,
     created_at: t.toISOString(), user_id: ctx.userId ?? null, device_id: ctx.deviceId ?? null,
     customer_id: d.customer_id ?? null, supplier_id: d.supplier_id ?? null, parent_invoice_id: d.parent_invoice_id ?? null,
     total: d.total, paid: d.paid, credit_amount: d.credit_amount, cash_effect: d.cash_effect,

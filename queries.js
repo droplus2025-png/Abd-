@@ -9,6 +9,9 @@ export const stockValue = async (tx) => (await tx.find('products', p => !p.delet
   .reduce((a, p) => a + lineCents(Math.max(p.qty, 0), p.purchase_price), 0);
 export const partyBalance = async (tx, key, id) => (await tx.find('debt_ledger', d => d[key] === id)).reduce((a, d) => a + d.amount, 0);
 
+// quick sales that already received their product details
+const detailedSet = async (tx) => new Set((await tx.find('invoices', i => i.type === 'quick_detail')).map(i => i.parent_invoice_id));
+
 export function queriesApi(ctx) {
   const { store } = ctx;
   const ownerRead = async (fn) => { ctx.access.requireOwner(); return store.transaction(fn); };
@@ -38,9 +41,10 @@ export function queriesApi(ctx) {
     async invoices({ type, customerId, supplierId, limit = 200 } = {}) {
       ctx.access.require('view_invoices');
       return store.transaction(async (tx) => {
-        let rows = await tx.find('invoices', i => (!type || i.type === type) && (!customerId || i.customer_id === customerId) && (!supplierId || i.supplier_id === supplierId));
+        let rows = await tx.find('invoices', i => i.type !== 'quick_detail' && (!type || i.type === type) && (!customerId || i.customer_id === customerId) && (!supplierId || i.supplier_id === supplierId));
         rows = rows.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
-        return rows.map(i => strip(ctx, i));
+        const detailed = await detailedSet(tx);
+        return rows.map(i => ({ ...strip(ctx, i), has_detail: detailed.has(i.id) }));
       });
     },
     // find invoices by number, or by the name / phone of the customer or supplier (used by the return screens)
@@ -52,10 +56,11 @@ export function queriesApi(ctx) {
       return store.transaction(async (tx) => {
         const parties = new Map([...(await tx.all('customers')), ...(await tx.all('suppliers'))].map(p => [p.id, p]));
         const rows = [];
-        for (const i of (await tx.find('invoices', x => !types || types.includes(x.type))).sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+        const detailed = await detailedSet(tx);
+        for (const i of (await tx.find('invoices', x => x.type !== 'quick_detail' && (!types || types.includes(x.type)))).sort((a, b) => b.created_at.localeCompare(a.created_at))) {
           const p = parties.get(i.customer_id || i.supplier_id);
           const hit = !t || i.invoice_no.includes(t) || (p && (p.name.toLowerCase().includes(t) || nums.some((n) => p.phone_norm.includes(n))));
-          if (hit) rows.push({ ...strip(ctx, i), party_name: p?.name ?? null, party_phone: p?.phone ?? null });
+          if (hit) rows.push({ ...strip(ctx, i), party_name: p?.name ?? null, party_phone: p?.phone ?? null, has_detail: detailed.has(i.id) });
           if (rows.length >= limit) break;
         }
         return rows;
@@ -66,13 +71,27 @@ export function queriesApi(ctx) {
       return store.transaction(async (tx) => {
         const inv = (await tx.find('invoices', i => i.id === idOrNo || i.invoice_no === idOrNo))[0];
         if (!inv) return null;
-        const lines = (await tx.find('invoice_lines', l => l.invoice_id === inv.id)).sort((a, b) => a.line_no - b.line_no);
-        const returns = await tx.find('invoices', r => r.parent_invoice_id === inv.id);
+        const detail = inv.type === 'quick_sale' ? (await tx.find('invoices', d => d.type === 'quick_detail' && d.parent_invoice_id === inv.id))[0] : null;
+        const eff = detail || inv;                                   // a detailed quick sale shows (and returns) its product lines
+        const lines = (await tx.find('invoice_lines', l => l.invoice_id === eff.id)).sort((a, b) => a.line_no - b.line_no);
+        const returns = await tx.find('invoices', r => r.parent_invoice_id === inv.id || r.parent_invoice_id === eff.id);
         const remaining = await remainingDebt(tx, inv);
         const allLines = await tx.all('invoice_lines');
         const returned = (id) => allLines.filter(x => x.origin_line_id === id).reduce((a, x) => a + x.qty, 0);   // already returned quantity
         const party = inv.customer_id ? await tx.get('customers', inv.customer_id) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
-        return { invoice: strip(ctx, inv), party, lines: lines.map(l => ({ ...stripLine(ctx, l), returned: returned(l.id) })), returns: returns.map(r => strip(ctx, r)), remaining };
+        return { invoice: strip(ctx, inv), has_detail: !!detail, quick_pending: inv.type === 'quick_sale' && !detail, real_profit: detail ? inv.profit + detail.profit : null, party, lines: lines.map(l => ({ ...stripLine(ctx, l), returned: returned(l.id) })), returns: returns.map(r => strip(ctx, r)), remaining };
+      });
+    },
+
+    // archive of one customer / supplier with the remaining amount of each invoice
+    async partyStatement({ customer_id, supplier_id }) {
+      ctx.access.require('view_invoices');
+      return store.transaction(async (tx) => {
+        const rows = (await tx.find('invoices', i => (customer_id ? i.customer_id === customer_id : i.supplier_id === supplier_id)))
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        const out = [];
+        for (const i of rows) out.push({ ...strip(ctx, i), remaining: await remainingDebt(tx, i) });
+        return out;
       });
     },
 
@@ -85,6 +104,7 @@ export function queriesApi(ctx) {
         const d = days.get(k) || { day: k, sales_count: 0, sales_total: 0, returns_total: 0, gross_profit: 0, expenses: 0, net_profit: 0 };
         if (i.type === 'sale' || i.type === 'quick_sale') { d.sales_count++; d.sales_total += i.total; d.gross_profit += i.profit; }
         if (i.type === 'return_customer') { d.returns_total += i.total; d.gross_profit += i.profit; }
+        if (i.type === 'quick_detail') d.gross_profit += i.profit;      // real profit replaces the flat %
         if (i.type === 'expense') d.expenses += i.total;
         d.net_profit = d.gross_profit - d.expenses;
         days.set(k, d);
