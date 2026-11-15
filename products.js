@@ -1,6 +1,6 @@
 // Products: SKU never reused, price history, stock only through movements.
 import { fail } from './errors.js';
-import { parseScaled, parsePrice, parseQty } from './money.js';
+import { parseScaled, parsePrice, parseQty, fmtPrice, fmtQty } from './money.js';
 import { audit, applyMovement } from './post.js';
 
 const nameKey = (s) => String(s).trim().toLowerCase();
@@ -93,6 +93,29 @@ export function productsApi(ctx) {
       const d = Number(delta) < 0 ? -parseQty(String(delta).replace('-', '')) : parseQty(delta);
       if (d === 0) fail('BAD_NUMBER', 'Nothing to adjust');
       return store.transaction(async (tx) => applyMovement(ctx, tx, { product_id: id, reason, qty_delta: d }));
+    },
+
+    // the owner corrects a quantity (inventory count): journaled as an adjustment movement
+    async setQty(id, newQty) {
+      ctx.access.require('manage_stock');
+      const target = parseQty(newQty, 'qty');
+      return store.transaction(async (tx) => {
+        const p = await tx.get('products', id);
+        if (!p || p.deleted_at) fail('UNKNOWN_PRODUCT', 'Unknown product');
+        if (target === p.qty) return p;
+        await applyMovement(ctx, tx, { product_id: id, reason: 'adjustment', qty_delta: target - p.qty });
+        return tx.get('products', id);
+      });
+    },
+
+    // CSV for Excel: Sku;Produit;PA;AV;Qte  (same order the paste/import expects)
+    async exportCsv() {
+      ctx.access.require('manage_stock');
+      const cell = (v) => { const s = String(v); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      return store.transaction(async (tx) => {
+        const rows = (await tx.find('products', (p) => !p.deleted_at)).sort((a, b) => a.sku - b.sku);
+        return ['Sku;Produit;PA;AV;Qte', ...rows.map((p) => [p.sku, cell(p.name), fmtPrice(p.purchase_price), fmtPrice(p.sale_price), fmtQty(p.qty)].join(';'))].join('\r\n');
+      });
     },
 
     // import rows (CSV / paste): blank lines ignored, same name or SKU twice -> one line kept,

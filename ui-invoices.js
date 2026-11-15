@@ -77,14 +77,15 @@ export async function renderInvoices(app, params = {}) {
   function editDetails(d) {
     back = () => detail(d.invoice.id);
     const total = d.invoice.total;
-    const manual = !!can.edit_sale_price;                    // no right to edit prices -> prices are shared out automatically
+    const canPrice = !!can.edit_sale_price;                  // prices are those really charged; without the right to edit them the product's own price is used
     let lines = [], timer, last = null;                      // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
     $('#main').innerHTML = `
-      <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ ثابت: <b style="color:var(--text)">${money(total)}</b> ويجب توزيعه كاملاً</span></div>
+      <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ المدفوع: <b style="color:var(--text)">${money(total)}</b></span>
+        <div class="muted" style="font-size:.82rem;margin-top:4px">أضف المنتجات المباعة فعلاً بأسعار بيعها الحقيقية، ويجب أن يساوي المجموع المبلغ المدفوع تماماً. وإلا فاترك الفاتورة بدون تفاصيل.</div></div>
       <div class="row"><input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off" style="flex:1"><button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
       <div id="sug"></div><div id="dl" style="display:flex;flex-direction:column;gap:6px"></div>
       <div id="sum" class="card"></div><div class="err" id="derr"></div>
-      <div class="row">${manual ? '<button class="btn" id="auto" style="flex:1">توزيع تلقائي</button>' : ''}<button class="btn teal big" id="save" disabled style="flex:2;font-size:1.2rem">حفظ التفاصيل</button></div>`;
+      <button class="btn teal big" id="save" disabled style="font-size:1.2rem">حفظ التفاصيل</button>`;
 
     async function suggest() {
       const q = $('#ps').value.trim();
@@ -109,43 +110,37 @@ export async function renderInvoices(app, params = {}) {
       } }], onOpen: (m) => m.querySelector('#en').focus(),
     });
 
-    const payload = (extra = {}) => ({ invoice: d.invoice.id, autoDistribute: !manual || undefined, ...extra,
+    const payload = (extra = {}) => ({ invoice: d.invoice.id, ...extra,
       lines: lines.map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });
 
     function draw() {
-      $('#dl').innerHTML = lines.map((l, k) => `<div class="line ${l.kind === 'ext' ? 'ext' : ''}" style="grid-template-columns:1fr 78px 64px 34px 30px" data-k="${k}">
+      $('#dl').innerHTML = lines.map((l, k) => `<div class="line ${l.kind === 'ext' ? 'ext' : ''}" style="grid-template-columns:1fr 78px 64px 30px" data-k="${k}">
         <div class="nm">${l.kind === 'product' ? `<span class="muted">${l.sku} · </span>` : '＋ '}${esc(l.name)}<br><span class="muted lt" style="font-size:.78rem"></span></div>
-        <input class="inp p" inputmode="decimal" value="${esc(l.price)}" ${manual ? '' : 'disabled'}><input class="inp n" inputmode="decimal" value="${esc(l.qty)}">
-        ${manual ? '<button class="btn fit" title="ضع المتبقي على هذا السطر" style="padding:6px 0">⇆</button>' : '<span></span>'}<button class="x">✖</button></div>`).join('');
+        <input class="inp p" inputmode="decimal" value="${esc(l.price)}" ${canPrice ? '' : 'disabled'}><input class="inp n" inputmode="decimal" value="${esc(l.qty)}">
+        <button class="x">✖</button></div>`).join('');
       document.querySelectorAll('#dl .line').forEach((row) => {
         const l = lines[Number(row.dataset.k)], pi = row.querySelector('.p'), ni = row.querySelector('.n');
         [pi, ni].forEach((i) => i.addEventListener('focus', () => i.select()));
         pi.addEventListener('input', () => { l.price = pi.value; schedule(); });
         ni.addEventListener('input', () => { l.qty = ni.value; schedule(); });
         row.querySelector('.x').addEventListener('click', () => { lines.splice(Number(row.dataset.k), 1); draw(); });
-        row.querySelector('.fit')?.addEventListener('click', () => {            // put the remaining amount on this line
-          if (!last) return;
-          const k = Number(row.dataset.k), newTotal = last.lines[k].line_total + last.remaining;
-          try { const q = M.parseQty(l.qty); if (newTotal > 0 && q > 0) { l.price = price4(Math.round((newTotal * 100 * 1000) / q)); pi.value = l.price; schedule(); } } catch { /* ignore */ }
-        });
       });
       schedule();
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(preview, 150); }
     async function preview() {
       $('#derr').textContent = ''; $('#save').disabled = true; last = null;
-      if (!lines.length) { $('#sum').innerHTML = '<div class="muted">أضف المنتجات المباعة وكمياتها وأسعارها حتى يُوزَّع المبلغ كاملاً</div>'; return; }
+      if (!lines.length) { $('#sum').innerHTML = '<div class="muted">أضف المنتجات المباعة فعلاً وكمياتها وأسعارها</div>'; return; }
       try {
         const p = await eng.previewQuickDetail(payload());
         last = p;
         document.querySelectorAll('#dl .line').forEach((row, k) => {
           row.querySelector('.lt').textContent = `= ${money(p.lines[k].line_total)}`;
-          if (!manual) { row.querySelector('.p').value = price4(p.lines[k].unit_price); }
         });
         const ok = p.remaining === 0;
         $('#sum').innerHTML = `<div class="kv"><span>المبلغ الثابت</span><b>${money(p.total)}</b></div>
-          <div class="kv"><span>الموزَّع على المنتجات</span><b>${money(p.distributed)}</b></div>
-          <div class="kv"><span>المتبقي للتوزيع</span><b style="color:${ok ? 'var(--ok)' : 'var(--red)'}">${ok ? '0 ✓' : money(p.remaining)}</b></div>
+          <div class="kv"><span>مجموع المنتجات المضافة</span><b>${money(p.distributed)}</b></div>
+          <div class="kv"><span>الفرق عن المبلغ المدفوع</span><b style="color:${ok ? 'var(--ok)' : 'var(--red)'}">${ok ? '0 ✓' : money(p.remaining)}</b></div>
           ${can.view_cost_profit ? `<div class="kv"><span>الربح الحقيقي</span><b style="color:var(--gold)">${money(p.real_profit)}</b></div>
             <div class="kv"><span class="muted">بدل التقديري الجزافي</span><span class="muted">${money(p.flat_profit)}</span></div>` : ''}
           ${p.below_cost.length ? `<div class="err">⚠ بيع بأقل من التكلفة: ${p.below_cost.map((x) => esc(x.name)).join('، ')}</div>` : ''}
@@ -153,14 +148,6 @@ export async function renderInvoices(app, params = {}) {
         $('#save').disabled = !ok;
       } catch (e) { $('#derr').textContent = errText(e); }
     }
-    $('#auto')?.addEventListener('click', async () => {
-      if (!lines.length) return;
-      try {
-        const p = await eng.previewQuickDetail(payload({ autoDistribute: true }));
-        p.lines.forEach((pl, k) => { lines[k].price = price4(pl.unit_price); });
-        draw();
-      } catch (e) { $('#derr').textContent = errText(e); }
-    });
     async function save(allowBelowCost = false) {
       $('#save').disabled = true;
       try {

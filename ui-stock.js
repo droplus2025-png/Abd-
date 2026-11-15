@@ -1,27 +1,65 @@
-// Stock screen: LTR table (number | product | purchase | sale | quantity), add, paste from Excel.
-import { mount, $, esc, header, toast, errText, openModal, price4, qtyStr } from './ui-core.js';
+// Stock screen: LTR table (number | product | purchase | sale | quantity).
+// The owner taps a row to edit quantity, prices, number and name. A row with 0 in number / purchase / sale / quantity is RED.
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, price4, qtyStr } from './ui-core.js';
 
 export async function renderStock(app) {
-  const eng = app.engine, can = app.session.permissions, owner = app.session.role === 'owner';
+  const eng = app.engine, can = app.session.permissions;
+  const editable = can.manage_stock || can.edit_purchase_price || can.edit_sale_price;
   mount(`<div class="screen">${header('المنتجات')}<div class="body">
     <input id="q" class="inp" placeholder="🔍 بحث: اسم المنتج أو رقمه" autocomplete="off">
     <div class="row">
       ${can.add_product ? '<button class="btn gold" id="add" style="flex:1">+ إضافة</button>' : ''}
-      ${can.manage_stock ? '<button class="btn" id="paste" style="flex:1">لصق من Excel</button>' : ''}
+      ${can.manage_stock ? '<button class="btn" id="paste" style="flex:1">لصق من Excel</button><button class="btn" id="csv" style="flex:1">⬇ تصدير CSV</button>' : ''}
     </div>
     <div class="muted" id="count"></div>
     <div id="list" style="overflow:auto;flex:1;min-height:0"></div></div></div>`);
   $('#hdrBack').onclick = () => app.go('home');
 
+  const isBad = (p) => !p.sku || !p.purchase_price || !p.sale_price || !p.qty || p.qty < 0;      // 0 in any of the four cells (or negative stock)
   async function load() {
-    const rows = await eng.products.search($('#q').value.trim(), 400);
-    $('#count').textContent = `${rows.length} منتج${rows.length === 400 ? ' (أول 400)' : ''}`;
+    const rows = await eng.products.search($('#q').value.trim(), 1500);
+    const bad = rows.filter(isBad).length;
+    $('#count').innerHTML = `${rows.length} منتج${rows.length === 1500 ? ' (أول 1500)' : ''}${bad ? ` · <span style="color:var(--red)">${bad} سطر بقيمة صفر</span>` : ''}${editable ? ' · المس سطراً لتعديله' : ''}`;
     $('#list').innerHTML = `<div class="trow h" style="direction:ltr"><div>الرقم</div><div>المنتج</div><div>شراء</div><div>بيع</div><div>الكمية</div></div>` +
-      rows.map((p) => `<div class="trow" style="direction:ltr"><div style="color:var(--gold);font-weight:800">${p.sku}</div>
-        <div class="n" dir="auto">${esc(p.name)}</div><div>${price4(p.purchase_price)}</div><div style="color:var(--lime)">${price4(p.sale_price)}</div>
-        <div class="${p.qty < 0 ? 'neg' : ''}">${qtyStr(p.qty)}</div></div>`).join('');
+      rows.map((p) => `<div class="trow ${isBad(p) ? 'bad' : ''}" data-id="${p.id}" style="direction:ltr;${editable ? 'cursor:pointer' : ''}">
+        <div class="c0" style="font-weight:800">${p.sku}</div><div class="n" dir="auto">${esc(p.name)}</div>
+        <div class="${!p.purchase_price ? 'z' : ''}">${price4(p.purchase_price) || 0}</div><div class="${!p.sale_price ? 'z' : ''}">${price4(p.sale_price) || 0}</div>
+        <div class="${p.qty <= 0 ? 'z' : ''}">${qtyStr(p.qty) || 0}</div></div>`).join('');
+    if (editable) document.querySelectorAll('#list .trow:not(.h)').forEach((r) => r.addEventListener('click', () => edit(rows.find((p) => p.id === r.dataset.id))));
   }
   let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 120); });
+
+  // ---- edit one product (owner): name, number, prices, quantity. Every change is journaled.
+  function edit(p) {
+    openModal({
+      title: `تعديل المنتج · ${p.sku}`, tall: true,
+      html: `<div class="lbl">اسم المنتج</div><input id="n" class="inp" value="${esc(p.name)}">
+        <div class="row"><div style="flex:1"><div class="lbl">الرقم الترتيبي</div><input id="s" class="inp" inputmode="numeric" value="${p.sku}" ${can.manage_stock ? '' : 'disabled'}></div>
+          <div style="flex:1"><div class="lbl">الكمية</div><input id="q" class="inp" inputmode="decimal" value="${qtyStr(p.qty) || 0}" ${can.manage_stock ? '' : 'disabled'}></div></div>
+        <div class="row"><div style="flex:1"><div class="lbl">سعر الشراء</div><input id="pa" class="inp" inputmode="decimal" value="${price4(p.purchase_price) || 0}" ${can.edit_purchase_price ? '' : 'disabled'}></div>
+          <div style="flex:1"><div class="lbl">سعر البيع</div><input id="pv" class="inp" inputmode="decimal" value="${price4(p.sale_price) || 0}" ${can.edit_sale_price ? '' : 'disabled'}></div></div>
+        <div class="err" id="err"></div>`,
+      buttons: [{ label: 'إلغاء' },
+        ...(can.manage_stock ? [{ label: 'حذف', cls: 'red', onClick: async (close, m) => {
+          if (!(await confirmBox('حذف المنتج', `حذف «${p.name}»؟ يبقى رقمه محجوزاً ولا يُعطى لمنتج آخر.`, 'حذف', 'إلغاء'))) return false;
+          try { await eng.products.remove(p.id); toast('تم الحذف'); load(); } catch (e) { m.querySelector('#err').textContent = errText(e); return false; }
+        } }] : []),
+        { label: 'حفظ', cls: 'gold', onClick: async (close, m) => {
+          const v = (id) => m.querySelector(id).value.trim();
+          try {
+            const patch = {};
+            if (v('#n') !== p.name) patch.name = v('#n');
+            if (can.manage_stock && Number(v('#s')) !== p.sku) patch.sku = v('#s');
+            if (can.edit_purchase_price && v('#pa') !== (price4(p.purchase_price) || '0')) patch.purchasePrice = v('#pa');
+            if (can.edit_sale_price && v('#pv') !== (price4(p.sale_price) || '0')) patch.salePrice = v('#pv');
+            if (Object.keys(patch).length) await eng.products.update(p.id, patch);
+            if (can.manage_stock && v('#q') !== (qtyStr(p.qty) || '0')) await eng.products.setQty(p.id, v('#q'));
+            toast('تم الحفظ'); load();
+          } catch (e) { m.querySelector('#err').textContent = errText(e) + (e.details?.sku ? ` (رقم ${e.details.sku})` : ''); return false; }
+        } }],
+      onOpen: (m) => m.querySelectorAll('input').forEach((i) => i.addEventListener('focus', () => i.select())),
+    });
+  }
 
   $('#add')?.addEventListener('click', () => openModal({
     title: 'إضافة منتج',
@@ -40,7 +78,7 @@ export async function renderStock(app) {
 
   $('#paste')?.addEventListener('click', () => openModal({
     title: 'لصق من Excel', tall: true,
-    html: `<div class="muted" style="font-size:.85rem">الأعمدة بالترتيب: الرقم ← المنتج ← سعر الشراء ← سعر البيع ← الكمية. الفاصل: Tab (من Excel) أو ;<br>الأسطر الفارغة تُتجاهل، والمكرر يبقى مرة واحدة.</div>
+    html: `<div class="muted" style="font-size:.85rem">الأعمدة بالترتيب: الرقم ← المنتج ← سعر الشراء ← سعر البيع ← الكمية. الفاصل: Tab (من Excel) أو ;<br>الأسطر الفارغة تُتجاهل، والمكرر يبقى مرة واحدة. (ملف التصدير يُعاد استيراده كما هو.)</div>
       <textarea id="ta" class="inp" rows="7" dir="ltr" placeholder="1;Marteau;30;40;5"></textarea><div class="err" id="err"></div>`,
     buttons: [{ label: 'إلغاء' }, { label: 'استيراد', cls: 'gold', onClick: async (close, m) => {
       const rows = [];
@@ -55,5 +93,16 @@ export async function renderStock(app) {
     } }],
     onOpen: (m) => m.querySelector('#ta').focus(),
   }));
+
+  // ---- CSV for Excel (UTF-8 with BOM so Arabic names display correctly)
+  $('#csv')?.addEventListener('click', async () => {
+    try {
+      const csv = await eng.products.exportCsv();
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `stock-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast('تم تصدير المخزون');
+    } catch (e) { toast(errText(e), true); }
+  });
   load();
 }

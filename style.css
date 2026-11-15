@@ -143,3 +143,8 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .tplgrid{display:grid;grid-template-columns:1fr;gap:12px}
 @media (min-width:900px){ .tplgrid{grid-template-columns:1fr 1fr} }
 select.inp{appearance:auto}
+/* stock: a row with a zero in number / purchase / sale / quantity is RED */
+.trow.bad{background:#3a1218;color:#ff9a9a;border-radius:8px}
+.trow.bad .c0,.trow.bad .n{color:#ff9a9a}
+.trow .z{color:var(--red);font-weight:800}
+.trow .c0{color:var(--gold)}

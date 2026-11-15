@@ -1,18 +1,16 @@
 // Purchase screen: supplier, product lines (existing or new), partial payment -> supplier debt.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4 } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, partySuggest } from './ui-core.js';
 import { money as M } from './index.js';
 
 export async function renderPurchase(app) {
   const eng = app.engine, can = app.session.permissions;
-  const suppliers = await eng.reports.suppliers();
   let lines = [];          // {sel, name, sku, qty, cost, sale}
   let sel = null;          // selected product, or {isNew:true, name}
   const createdNew = new Map();   // new products already created by a previous (failed) attempt: reuse them, never create twice
 
   mount(`<div class="screen">${header('شراء')}<div class="body"><div class="twocol"><div class="c1">
-    <div class="row"><input id="sn" class="inp" placeholder="اسم المورد" list="sl" style="flex:1.2" autocomplete="off">
-      <input id="sp" class="inp" inputmode="tel" placeholder="هاتف المورد" style="flex:1"></div>
-    <datalist id="sl">${suppliers.map((s) => `<option value="${esc(s.name)}">${esc(s.phone)}</option>`).join('')}</datalist>
+    <div class="row"><input id="sn" class="inp" placeholder="اسم المورد" style="flex:1.2" autocomplete="off">
+      <input id="sp" class="inp" inputmode="tel" placeholder="هاتف المورد" style="flex:1"></div><div id="ssg"></div>
     <div class="card" style="display:flex;flex-direction:column;gap:8px">
       <input id="pk" class="inp" placeholder="🔍 رقم المنتج أو اسمه" autocomplete="off">
       <div id="sug"></div><div id="picked" class="muted"></div>
@@ -34,8 +32,8 @@ export async function renderPurchase(app) {
     document.querySelectorAll('#list .x').forEach((b) => b.addEventListener('click', () => { lines.splice(Number(b.closest('.line').dataset.i), 1); drawList(); }));
   }
 
-  // supplier: pick a known name -> phone is filled
-  $('#sn').addEventListener('change', () => { const s = suppliers.find((x) => x.name === $('#sn').value); if (s && !$('#sp').value) $('#sp').value = s.phone; });
+  // known suppliers are suggested while typing a name or a phone
+  partySuggest(app, 'supplier', $('#sn'), $('#sp'), $('#ssg'));
 
   // product search / selection
   function lockFields() {

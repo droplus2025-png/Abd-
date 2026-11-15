@@ -1,5 +1,5 @@
 // Sale screen: search + external product, quick-sale keypad, cart, pay.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, partySuggest } from './ui-core.js';
 import { money as M } from './index.js';
 
 export async function renderSale(app) {
@@ -136,7 +136,7 @@ export async function renderSale(app) {
       title: `الدفع · ${money(T)}`,
       html: `<div class="lbl">المبلغ المدفوع</div><input id="paid" class="inp" inputmode="decimal" value="${money(T)}">
         <div id="info" class="muted"></div>
-        <div id="cust" style="display:none;gap:8px;flex-direction:column"><input id="cn" class="inp" placeholder="اسم الزبون"><input id="cp" class="inp" inputmode="tel" placeholder="رقم الهاتف"></div>
+        <div id="cust" style="display:none;gap:8px;flex-direction:column"><input id="cn" class="inp" placeholder="اسم الزبون"><input id="cp" class="inp" inputmode="tel" placeholder="رقم الهاتف"><div id="sg"></div></div>
         <div class="err" id="perr"></div>`,
       buttons: [{ label: 'إلغاء' }, { label: 'تأكيد', cls: 'gold', onClick: (close, m) => confirmSale(m) }],
       onOpen: (m) => {
@@ -146,6 +146,7 @@ export async function renderSale(app) {
           if (p >= T) { info.textContent = p > T ? `الباقي للزبون: ${money(p - T)}` : ''; cust.style.display = 'none'; }
           else { info.textContent = `دين على الزبون: ${money(T - p)}`; cust.style.display = 'flex'; }
         };
+        partySuggest(app, 'customer', m.querySelector('#cn'), m.querySelector('#cp'), m.querySelector('#sg'));
         paid.addEventListener('input', upd); paid.addEventListener('focus', () => paid.select());
         upd(); paid.focus(); paid.select();
         paid.addEventListener('keydown', (e) => { if (e.key === 'Enter') m.querySelector('.mbtns .gold').click(); });

@@ -354,10 +354,6 @@ test('invoice search (number, name, phone) and already-returned quantities', asy
 });
 
 test('quick sale details: whole total distributed, normal-sale freedom, real profit replaces the flat %', async () => {
-  const { allocate, priceFor } = await import('./quick-detail.js');
-  assert.deepEqual(allocate(100, [1, 1, 1]), [34, 33, 33]);
-  assert.equal(money.lineCents(3000, priceFor(1097, 3000)), 1097);
-
   const w = await world();
   const A = await w.owner.products.create({ name: 'A', purchasePrice: '10', salePrice: '30', qty: '100' });
   const B = await w.owner.products.create({ name: 'B', purchasePrice: '20', salePrice: '50', qty: '100' });
@@ -373,8 +369,10 @@ test('quick sale details: whole total distributed, normal-sale freedom, real pro
   const pv = await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines });
   assert.equal(pv.distributed, 41000); assert.equal(pv.remaining, 9000);
   await rejects(w.emp.detailQuickSale({ invoice: q.invoice.id, lines }), 'DETAIL_TOTAL_MISMATCH');           // 90 not distributed yet
-  const auto = await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines, autoDistribute: true });
-  assert.equal(auto.remaining, 0);
+  // nothing is shared out automatically: the option does not exist any more, and a partial list simply cannot be saved
+  const noAuto = await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines, autoDistribute: true });
+  assert.equal(noAuto.remaining, 9000);
+  assert.equal((await w.emp.reports.pendingQuickSales()).count, 1);
 
   const mine = [{ productId: A.id, qty: 3, price: '40' }, { productId: B.id, qty: 4, price: '60' }, { productId: C.id, qty: 10, price: '14' }];   // 120+240+140
   const before = w.store.export();
@@ -431,7 +429,9 @@ test('quick sale details: whole total distributed, normal-sale freedom, real pro
   const emp2 = createEngine({ store: w.store, session: await w.auth.login('5678'), now: w.now });
   const q5 = await emp2.quickSale('60');
   await rejects(emp2.detailQuickSale({ invoice: q5.invoice.id, lines: [{ productId: A.id, qty: 2, price: '25' }] }), 'PERMISSION_DENIED');   // price differs from the product's
-  await emp2.detailQuickSale({ invoice: q5.invoice.id, lines: [{ productId: A.id, qty: 2 }] });                                                  // default price 30 x 2 = 60 is fine
+  await emp2.detailQuickSale({ invoice: q5.invoice.id, lines: [{ productId: A.id, qty: 2 }] });                                                  // really sold at 30 x 2 = 60: saved
+  const q6 = await emp2.quickSale('70');                                                                                                        // 70 cannot be reached at the real prices -> stays undetailed
+  await rejects(emp2.detailQuickSale({ invoice: q6.invoice.id, lines: [{ productId: A.id, qty: 2 }] }), 'DETAIL_TOTAL_MISMATCH');
 });
 
 test('party statement: every invoice of a customer with what is still owed', async () => {
@@ -488,4 +488,23 @@ test('backup: export, verified restore, tampered file refused, restore replaces 
   const owner2 = createEngine({ store: store2, session: await createAuth({ store: store2 }).login('1234') });           // the codes come with the backup
   assert.equal(await owner2.reports.cashBalance(), await w.owner.reports.cashBalance());
   assert.deepEqual(await owner2.reports.integrityCheck(), []);
+});
+
+test('stock: owner edits quantity / prices / SKU, journaled; CSV export', async () => {
+  const w = await world();
+  const a = await w.owner.products.create({ name: 'Marteau; "XL"', purchasePrice: '30', salePrice: '40', qty: '10' });
+  const b = await w.owner.products.create({ name: 'Clou', purchasePrice: '0,5', salePrice: '1', qty: '0' });
+  await w.owner.products.setQty(a.id, '7,5');
+  assert.equal((await w.owner.products.search('1'))[0].qty, 7500);
+  await rejects(w.emp.products.setQty(a.id, '1'), 'PERMISSION_DENIED');
+  await w.owner.products.update(a.id, { name: 'Marteau XL', purchasePrice: '31', salePrice: '42', sku: 9 });
+  const u = (await w.owner.products.search('9'))[0];
+  assert.equal(u.sku, 9); assert.equal(u.purchase_price, 310000); assert.equal(u.sale_price, 420000);
+  await rejects(w.owner.products.update(b.id, { sku: 9 }), 'SKU_TAKEN');
+  const csv = await w.owner.products.exportCsv();
+  assert.equal(csv, 'Sku;Produit;PA;AV;Qte\r\n2;Clou;0.5;1;0\r\n9;Marteau XL;31;42;7.5');
+  await rejects(w.emp.products.exportCsv(), 'PERMISSION_DENIED');
+  const again = await w.owner.products.import(csv.split('\r\n').map(l => l.split(';')).slice(1).map(([sku, name, pa, av, q]) => ({ sku, name, purchasePrice: pa, salePrice: av, qty: q })));
+  assert.equal(again.created, 0); assert.equal(again.skipped.length, 2);                                // the exported file re-imports without duplicates
+  assert.deepEqual(await w.owner.reports.integrityCheck(), []);
 });
