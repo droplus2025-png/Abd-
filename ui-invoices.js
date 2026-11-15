@@ -82,7 +82,7 @@ export async function renderInvoices(app, params = {}) {
     $('#main').innerHTML = `
       <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ المدفوع: <b style="color:var(--text)">${money(total)}</b></span>
         <div class="muted" style="font-size:.82rem;margin-top:4px">أضف المنتجات المباعة فعلاً بأسعار بيعها الحقيقية، ويجب أن يساوي المجموع المبلغ المدفوع تماماً. وإلا فاترك الفاتورة بدون تفاصيل.</div></div>
-      <div class="row"><input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off" style="flex:1"><button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
+      <div class="row"><input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off" style="flex:1"><button class="btn rose" id="ext" style="flex:0 0 31%">🔦 منتج خارجي</button></div>
       <div id="sug"></div><div id="dl" style="display:flex;flex-direction:column;gap:6px"></div>
       <div id="sum" class="card"></div><div class="err" id="derr"></div>
       <button class="btn teal big" id="save" disabled style="font-size:1.2rem">حفظ التفاصيل</button>`;

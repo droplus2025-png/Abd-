@@ -1,6 +1,6 @@
 // Stock screen: LTR table (number | product | purchase | sale | quantity).
 // The owner taps a row to edit quantity, prices, number and name. A row with 0 in number / purchase / sale / quantity is RED.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, price4, qtyStr } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, price4, qtyStr, priceShort } from './ui-core.js';
 
 export async function renderStock(app) {
   const eng = app.engine, can = app.session.permissions;
@@ -20,11 +20,11 @@ export async function renderStock(app) {
     const rows = await eng.products.search($('#q').value.trim(), 1500);
     const bad = rows.filter(isBad).length;
     $('#count').innerHTML = `${rows.length} منتج${rows.length === 1500 ? ' (أول 1500)' : ''}${bad ? ` · <span style="color:var(--red)">${bad} سطر بقيمة صفر</span>` : ''}${editable ? ' · المس سطراً لتعديله' : ''}`;
-    $('#list').innerHTML = `<div class="trow h" style="direction:ltr"><div>الرقم</div><div>المنتج</div><div>شراء</div><div>بيع</div><div>الكمية</div></div>` +
+    $('#list').innerHTML = `<div class="trow h" style="direction:ltr"><div>الرقم</div><div>المنتج</div><div class="num">شراء</div><div class="num">بيع</div><div class="num">الكمية</div></div>` +
       rows.map((p) => `<div class="trow ${isBad(p) ? 'bad' : ''}" data-id="${p.id}" style="direction:ltr;${editable ? 'cursor:pointer' : ''}">
         <div class="c0" style="font-weight:800">${p.sku}</div><div class="n" dir="auto">${esc(p.name)}</div>
-        <div class="${!p.purchase_price ? 'z' : ''}">${price4(p.purchase_price) || 0}</div><div class="${!p.sale_price ? 'z' : ''}">${price4(p.sale_price) || 0}</div>
-        <div class="${p.qty <= 0 ? 'z' : ''}">${qtyStr(p.qty) || 0}</div></div>`).join('');
+        <div class="num ${!p.purchase_price ? 'z' : ''}">${priceShort(p.purchase_price)}</div><div class="num ${!p.sale_price ? 'z' : ''}">${priceShort(p.sale_price)}</div>
+        <div class="num ${p.qty <= 0 ? 'z' : ''}">${qtyStr(p.qty) || 0}</div></div>`).join('');
     if (editable) document.querySelectorAll('#list .trow:not(.h)').forEach((r) => r.addEventListener('click', () => edit(rows.find((p) => p.id === r.dataset.id))));
   }
   let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 120); });

@@ -81,12 +81,12 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .sheet{width:100%;max-width:540px;max-height:46vh;overflow:auto;background:var(--bar);border:2px solid var(--gold);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;margin-top:6px}
 .sheet.tall{max-height:70vh}
 .sheet h3{margin:0;color:var(--gold)}
-.toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#0b2a1f;border:2px solid var(--ok);color:var(--text);
+.toast{position:fixed;left:50%;top:10px;transform:translateX(-50%);background:#0b2a1f;border:2px solid var(--ok);color:var(--text);
   padding:12px 18px;border-radius:14px;z-index:99;font-weight:700;max-width:92%;text-align:center}
 .toast.bad{background:#2d1015;border-color:var(--red)}
 
 /* tables */
-.trow{display:grid;grid-template-columns:48px 1fr 70px 70px 64px;gap:6px;padding:9px 6px;border-bottom:1px solid #1f3a80;align-items:center;font-size:.95rem}
+.trow{display:grid;grid-template-columns:10% 60% 10% 10% 10%;gap:0;padding:9px 2px;border-bottom:1px solid #1f3a80;align-items:center;font-size:.95rem}
 .trow.h{color:var(--muted);font-size:.8rem;position:sticky;top:0;background:var(--bg)}
 .trow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trow .neg{color:var(--red)}
@@ -128,7 +128,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   .key{min-height:78px;font-size:2.1rem}
   .totalbox .v{font-size:2.2rem}.btn.teal{font-size:1.9rem}
   .line{grid-template-columns:1fr 110px 90px 44px;padding:10px 12px}.line .inp{font-size:1.1rem}
-  .trow{grid-template-columns:80px 1fr 120px 120px 110px;font-size:1.05rem;padding:13px 8px}
+  .trow{grid-template-columns:10% 60% 10% 10% 10%;font-size:1.05rem;padding:13px 6px}
   .body.col{max-width:900px;width:100%;margin:0 auto}
   .body.cards{display:grid;grid-template-columns:1fr 1fr;align-content:start;gap:14px}
   .sheet{max-width:680px;max-height:55vh}.sheet.tall{max-height:75vh}
@@ -148,3 +148,28 @@ select.inp{appearance:auto}
 .trow.bad .c0,.trow.bad .n{color:#ff9a9a}
 .trow .z{color:var(--red);font-weight:800}
 .trow .c0{color:var(--gold)}
+
+/* stock: 10 % number | 60 % product | 10 % purchase | 10 % sale | 10 % quantity  (the name gets the room) */
+.trow>div{padding:0 3px;min-width:0}
+.trow .n{white-space:normal;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-align:start}
+.trow .num{text-align:center;font-size:.82rem;font-variant-numeric:tabular-nums}
+@media (min-width:900px){ .trow .num{font-size:1rem} }
+
+/* sale: three colours that mean something. green = normal sale, rose = external product (what is missing),
+   orange = quick sale and its keypad */
+:root{--green:#22c55e;--green-d:#0c2f22;--rose:#ff8fa3;--rose-d:#e5566f}
+.saletop{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0}
+.cell{border-radius:14px;border:2px solid transparent;min-height:54px;padding:10px 12px;font-weight:800;font-size:1.05rem;text-align:center;width:100%}
+.cell.normal{background:linear-gradient(#3ddc84,#16a34a);color:#04260f}
+.cell.ext{background:linear-gradient(#ffb1bf,var(--rose-d));color:#3a0615}
+.cell.srch{background:var(--green-d);border-color:var(--green);color:#eafff3;text-align:right;font-weight:600;outline:none}
+.cell.srch::placeholder{color:#74d6a0}
+.cell.srch:focus{box-shadow:0 0 14px #22c55e88}
+.cell.quickc{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(#ffd966,#e3a622);color:var(--ink);cursor:pointer}
+.cell.quickc .ql{font-size:.95rem}.cell.quickc .v{font-size:1.5rem;font-weight:900}
+.cell.quickc.off{opacity:.38;filter:grayscale(.4)}
+.resA .results,#main .results{border-color:#1f7a4a}
+.line{border-color:#1f6b46}
+.line.ext{border-color:var(--rose-d)}.line.ext .nm{color:var(--rose)}
+.btn.rose{background:linear-gradient(#ffb1bf,var(--rose-d));color:#3a0615;border:0}
+@media (min-width:900px){ .saletop{grid-column:1/-1} .cell{min-height:64px;font-size:1.2rem} .cell.quickc .v{font-size:1.9rem} }

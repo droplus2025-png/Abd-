@@ -88,3 +88,6 @@ export function partySuggest(app, kind, nameEl, phoneEl, box) {
   for (const el of [nameEl, phoneEl]) { el.addEventListener('input', render); el.addEventListener('focus', render); }
   nameEl.setAttribute('autocomplete', 'off'); phoneEl.setAttribute('autocomplete', 'off');
 }
+
+// compact display of a price in a narrow column (full precision stays in the edit window)
+export const priceShort = (p4) => { const v = p4 / 10000; const s = v >= 1000 ? String(Math.round(v)) : v.toFixed(2).replace(/\.?0+$/, ''); return s || '0'; };

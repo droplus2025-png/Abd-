@@ -12,13 +12,15 @@ export async function renderSale(app) {
 
   mount(`<div class="screen">${header('بيع')}
     <div class="body salegrid">
-      <div class="colA">
-        <div class="row"><input id="q" class="inp" placeholder="🔍 بحث بالاسم أو بالرقم" style="flex:1" autocomplete="off">
-          <button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
-        <div id="resA" class="resA"></div>
+      <!-- 2 x 2 block: green = normal sale, rose = external product (what is missing), orange = quick sale (+ its keypad) -->
+      <div class="saletop">
+        <button class="cell normal" id="lblNormal">🔍 بيع عادي</button>
+        <button class="cell ext" id="ext">🔦 منتج خارجي</button>
+        <input id="q" class="cell srch" placeholder="بحث بالاسم أو بالرقم" autocomplete="off">
+        <div id="quickbox" class="cell quickc"><span class="ql">🚀 بيع سريع</span><span class="v" id="qv">0</span></div>
       </div>
+      <div class="colA"><div id="resA" class="resA"></div></div>
       <div class="colB">
-        <div id="quickbox" class="quick"><span class="muted">بيع سريع</span><span class="v" id="qv">0</span></div>
         <div id="main" style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
         <div class="payrow"><button class="btn teal" id="pay">دفع</button>
           <div class="totalbox"><div class="l">الإجمالي</div><div class="v" id="tot">0</div></div></div>
@@ -40,13 +42,12 @@ export async function renderSale(app) {
   const mq = window.matchMedia('(min-width: 900px)');       // touch-screen computer: list on one side, cart / keypad on the other
   function draw() {
     refreshTotals();
+    $('#quickbox').classList.toggle('off', cart.length > 0);        // quick sale is only for an empty cart
     if (mq.matches) {
-      $('#quickbox').style.display = cart.length ? 'none' : 'flex';
       drawResults($('#resA'));
       return cart.length ? drawCart() : drawKeypad();
     }
     $('#resA').innerHTML = '';
-    $('#quickbox').style.display = cart.length || query || searching ? 'none' : 'flex';
     if (query || searching) return drawResults(main);
     if (cart.length) return drawCart();
     drawKeypad();
@@ -101,6 +102,11 @@ export async function renderSale(app) {
   qIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { query = qIn.value.trim(); draw(); }, 120); });
   qIn.addEventListener('focus', () => { searching = true; draw(); });
   qIn.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== qIn && !query) { searching = false; draw(); } }, 250));
+  $('#lblNormal').onclick = () => qIn.focus();                     // the green label leads to the search
+  $('#quickbox').onclick = () => {                                 // the orange box brings the keypad back
+    if (cart.length) return toast('أفرغ السلة أولاً لاستعمال البيع السريع', true);
+    query = ''; qIn.value = ''; searching = false; qIn.blur(); draw();
+  };
   $('#hdrBack').onclick = async () => { if (cart.length && !(await confirmBox('السلة غير فارغة', 'الخروج دون حفظ؟', 'خروج', 'بقاء'))) return; app.go('home'); };
 
   $('#ext').onclick = () => openModal({
