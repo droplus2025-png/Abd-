@@ -449,3 +449,43 @@ test('party statement: every invoice of a customer with what is still owed', asy
   assert.equal(by['sale:2000'], 1600);                                                                   // 20 - 4
   assert.equal(by['collect:1000'], 0);
 });
+
+test('backup: export, verified restore, tampered file refused, restore replaces everything', async () => {
+  const w = await world();
+  const { nails } = await stocked(w);
+  await w.emp.sale({ lines: [{ productId: nails.id, qty: 3 }], paid: '5', customer: { name: 'Karim', phone: '0600000001' } });
+  await w.emp.quickSale('40');
+  await rejects(w.emp.admin.backup(), 'PERMISSION_DENIED');
+  assert.equal(await w.owner.admin.lastBackupAt(), null);
+  const file = await w.owner.admin.backup();
+  assert.notEqual(await w.owner.admin.lastBackupAt(), null);
+  const json = JSON.parse(JSON.stringify(file));                           // what really travels in a .json file
+  const v = await w.owner.admin.verifyBackup(json);
+  assert.equal(v.ok, true); assert.equal(v.counts.customers, 1);
+
+  // an edited file is refused before anything is touched
+  const bad = JSON.parse(JSON.stringify(file));
+  bad.state.cash_ledger[0].amount += 100;
+  assert.equal((await w.owner.admin.verifyBackup(bad)).ok, false);
+  const before = w.store.export();
+  await rejects(w.owner.admin.restoreBackup(bad), 'BACKUP_CORRUPT');
+  assert.deepEqual(w.store.export(), before);
+  await rejects(w.owner.admin.verifyBackup({ format: 'other' }), 'BAD_BACKUP');
+  const noOwner = JSON.parse(JSON.stringify(file)); noOwner.state.app_users = noOwner.state.app_users.filter(u => u.role !== 'owner');
+  await rejects(w.owner.admin.verifyBackup(noOwner), 'BAD_BACKUP');
+
+  // restore into a brand new device
+  const saved = []; const store2 = createMemoryStore(undefined, { persist: async (ch) => { saved.push(...ch); } });
+  const auth2 = createAuth({ store: store2 });
+  await auth2.setupOwner({ name: 'Other', code: '9999' });
+  const o2 = createEngine({ store: store2, session: await auth2.login('9999') });
+  await o2.settings.init();
+  const counts = await o2.admin.restoreBackup(json);
+  assert.equal(counts.invoices, v.counts.invoices);
+  assert.equal(saved[saved.length - counts.invoices - 1] !== undefined, true);
+  assert.equal(saved.some(c => c.op === 'wipe'), true);                    // the disk is wiped then refilled in one transaction
+  assert.deepEqual(store2.export(), json.state);
+  const owner2 = createEngine({ store: store2, session: await createAuth({ store: store2 }).login('1234') });           // the codes come with the backup
+  assert.equal(await owner2.reports.cashBalance(), await w.owner.reports.cashBalance());
+  assert.deepEqual(await owner2.reports.integrityCheck(), []);
+});

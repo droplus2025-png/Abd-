@@ -28,7 +28,8 @@ export async function openPersist(dbName = 'pos-db') {
       const tx = db.transaction(STORE, 'readwrite');
       const os = tx.objectStore(STORE);
       for (const c of changes) {
-        if (c.op === 'clear') {
+        if (c.op === 'wipe') os.clear();
+        else if (c.op === 'clear') {
           const cur = os.index('table').openKeyCursor(IDBKeyRange.only(c.table));
           cur.onsuccess = () => { const k = cur.result; if (k) { os.delete(k.primaryKey); k.continue(); } };
         } else {

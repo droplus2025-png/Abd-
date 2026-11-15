@@ -35,6 +35,12 @@ export function renderHome(app) {
     if (LIVE[id]) app.go(...LIVE[id]); else app.go('soon', { title: TILES.find((t) => t[0] === id)?.[1] || 'قريباً' });
   }));
   $('#out').onclick = () => app.logout();
+  // owner: reminder when no recent backup exists (the data lives on this device only)
+  if (owner) app.engine.admin.lastBackupAt().then((t) => {
+    if (t && Date.now() - new Date(t) < 3 * 864e5) return;
+    document.querySelector('.body')?.insertAdjacentHTML('afterbegin', `<button class="card" id="bk" style="border-color:var(--amber);color:var(--amber);font-weight:700;text-align:center">⚠ ${t ? 'مرّت أكثر من 3 أيام على آخر نسخة احتياطية' : 'لم تُحفظ أي نسخة احتياطية بعد'} — اضغط للحفظ</button>`);
+    document.querySelector('#bk')?.addEventListener('click', () => app.go('admin'));
+  }).catch(() => {});
   // reminder: quick sales still waiting for their product details
   app.engine.reports.pendingQuickSales().then((r) => {
     app.pendingCount = r.count;

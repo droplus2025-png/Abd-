@@ -12,6 +12,28 @@ export const partyBalance = async (tx, key, id) => (await tx.find('debt_ledger',
 // quick sales that already received their product details
 const detailedSet = async (tx) => new Set((await tx.find('invoices', i => i.type === 'quick_detail')).map(i => i.parent_invoice_id));
 
+
+// the whole-database self check (also used to verify a backup file before restoring it)
+export async function integrityProblems(tx) {
+  const problems = [];
+  const movs = await tx.all('stock_movements');
+  for (const p of await tx.all('products')) {
+    const s = movs.filter(m => m.product_id === p.id).reduce((a, m) => a + m.qty_delta, 0);
+    if (s !== p.qty) problems.push({ check: 'product_qty', ref: p.sku, detail: `cache=${p.qty} ledger=${s}` });
+  }
+  for (const [table, key] of [['customers', 'customer_id'], ['suppliers', 'supplier_id']]) {
+    for (const party of await tx.all(table)) {
+      const bal = await partyBalance(tx, key, party.id);
+      const open = (await openInvoices(tx, { [key]: party.id })).reduce((a, o) => a + o.remaining, 0);
+      if (bal !== open) problems.push({ check: `${table}_debt`, ref: party.phone_norm, detail: `ledger=${bal} open_invoices=${open}` });
+    }
+  }
+  for (const i of await tx.all('invoices')) {
+    try { await checkInvoice(tx, i.id); } catch (e) { problems.push({ check: 'invoice', ref: i.invoice_no, detail: e.message }); }
+  }
+  return problems;
+}
+
 export function queriesApi(ctx) {
   const { store } = ctx;
   // reading invoices is needed by sales, returns, debts and the details of quick sales: any of these rights is enough
@@ -130,25 +152,7 @@ export function queriesApi(ctx) {
     }),
 
     // self-check: must be EMPTY. Anything listed is a number that does not add up.
-    integrityCheck: () => ownerRead(async (tx) => {
-      const problems = [];
-      const movs = await tx.all('stock_movements');
-      for (const p of await tx.all('products')) {
-        const s = movs.filter(m => m.product_id === p.id).reduce((a, m) => a + m.qty_delta, 0);
-        if (s !== p.qty) problems.push({ check: 'product_qty', ref: p.sku, detail: `cache=${p.qty} ledger=${s}` });
-      }
-      for (const [table, key] of [['customers', 'customer_id'], ['suppliers', 'supplier_id']]) {
-        for (const party of await tx.all(table)) {
-          const bal = await partyBalance(tx, key, party.id);
-          const open = (await openInvoices(tx, { [key]: party.id })).reduce((a, o) => a + o.remaining, 0);
-          if (bal !== open) problems.push({ check: `${table}_debt`, ref: party.phone_norm, detail: `ledger=${bal} open_invoices=${open}` });
-        }
-      }
-      for (const i of await tx.all('invoices')) {
-        try { await checkInvoice(tx, i.id); } catch (e) { problems.push({ check: 'invoice', ref: i.invoice_no, detail: e.message }); }
-      }
-      return problems;
-    }),
+    integrityCheck: () => ownerRead(integrityProblems),
   };
 }
 const strip = (ctx, i) => ctx.access.can('view_cost_profit') ? i : (({ cost_total, profit, profit_pct_applied, ...r }) => r)(i);

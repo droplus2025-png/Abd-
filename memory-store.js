@@ -82,6 +82,20 @@ export function createMemoryStore(initial, { persist } = {}) {
       queue = p.catch(() => {});
       return p;
     },
+    // restore a backup: everything replaced in ONE step (memory and disk), or nothing
+    replaceAll(newState) {
+      const run = async () => {
+        const snap = clone(state);
+        try {
+          state = Object.fromEntries(TABLES.map(t => [t, clone(newState[t] || [])]));
+          if (persist) await persist([{ op: 'wipe' }, ...TABLES.flatMap(table => state[table].map(row => ({ op: 'put', table, row })))]);
+          listeners.forEach(l => l(state));
+        } catch (e) { state = snap; throw e; }
+      };
+      const p = queue.then(run, run);
+      queue = p.catch(() => {});
+      return p;
+    },
     onCommit(fn) { listeners.push(fn); },
     export() { return clone(state); },
   };
