@@ -1,5 +1,5 @@
 // Invoices archive: search, filters, detail, WhatsApp, and product details for quick sales.
-import { mount, $, esc, header, toast, errText, openModal, money, price4, qtyStr, TYPE_AR, fmtWhen } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen } from './ui-core.js';
 import { money as M } from './index.js';
 
 // modal showing the formatted text invoice with a WhatsApp button (used by other screens too)
@@ -67,22 +67,24 @@ export async function renderInvoices(app, params = {}) {
           ? `<div class="kv"><span>${d.has_detail ? 'الربح الحقيقي' : i.type === 'quick_sale' ? 'الربح (نسبة جزافية)' : 'الربح'}</span><b>${money(d.real_profit ?? i.profit)}</b></div>` : ''}
         ${d.returns.length ? d.returns.map((r) => `<div class="kv"><span class="muted">إرجاع ${r.invoice_no}</span><b>${money(r.total)}</b></div>`).join('') : ''}</div>
       <div class="row"><button class="btn gold big" id="wa" style="flex:1">واتساب / نسخ</button>
-        ${d.quick_pending && can.detail_quick_sale ? '<button class="btn amber big" id="det" style="flex:1">إضافة التفاصيل</button>' : ''}</div>`;
+        ${d.quick_pending && can.quick_sale ? '<button class="btn amber big" id="det" style="flex:1">إضافة التفاصيل</button>' : ''}</div>`;
     $('#wa').onclick = () => showInvoice(app, id);
     $('#det')?.addEventListener('click', () => editDetails(d));
   }
 
   // ---------------------------------------------------------------- product details of a quick sale
+  // Same freedom as a normal sale (product, external product, price, quantity). The WHOLE total must be distributed.
   function editDetails(d) {
     back = () => detail(d.invoice.id);
     const total = d.invoice.total;
-    let lines = [], timer;
+    const manual = !!can.edit_sale_price;                    // no right to edit prices -> prices are shared out automatically
+    let lines = [], timer, last = null;                      // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
     $('#main').innerHTML = `
-      <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ ثابت ${money(total)} ولا يتغير</span></div>
-      <input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off"><div id="sug"></div>
-      <div id="dl" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ ثابت: <b style="color:var(--text)">${money(total)}</b> ويجب توزيعه كاملاً</span></div>
+      <div class="row"><input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off" style="flex:1"><button class="btn amber" id="ext" style="flex:0 0 31%">منتج خارجي</button></div>
+      <div id="sug"></div><div id="dl" style="display:flex;flex-direction:column;gap:6px"></div>
       <div id="sum" class="card"></div><div class="err" id="derr"></div>
-      <button class="btn teal big" id="save" disabled style="font-size:1.2rem">حفظ التفاصيل</button>`;
+      <div class="row">${manual ? '<button class="btn" id="auto" style="flex:1">توزيع تلقائي</button>' : ''}<button class="btn teal big" id="save" disabled style="flex:2;font-size:1.2rem">حفظ التفاصيل</button></div>`;
 
     async function suggest() {
       const q = $('#ps').value.trim();
@@ -91,46 +93,86 @@ export async function renderInvoices(app, params = {}) {
       $('#sug').innerHTML = `<div class="results">${rows.map((p) => `<button class="res" data-id="${p.id}"><span class="sku">${p.sku}</span><span>${esc(p.name)}</span><span class="muted">${price4(p.purchase_price)}</span><span class="p">${price4(p.sale_price)}</span></button>`).join('')}</div>`;
       document.querySelectorAll('#sug .res').forEach((b) => b.addEventListener('click', () => {
         const p = rows.find((r) => r.id === b.dataset.id), ex = lines.find((l) => l.id === p.id);
-        if (ex) ex.qty = String((Number(ex.qty) || 0) + 1); else lines.push({ id: p.id, name: p.name, sku: p.sku, qty: '1' });
+        if (ex) ex.qty = String((Number(ex.qty) || 0) + 1); else lines.push({ kind: 'product', id: p.id, name: p.name, sku: p.sku, qty: '1', price: price4(p.sale_price) });
         $('#ps').value = ''; $('#sug').innerHTML = ''; draw();
       }));
     }
     let ts; $('#ps').addEventListener('input', () => { clearTimeout(ts); ts = setTimeout(suggest, 120); });
+    $('#ext').onclick = () => openModal({
+      title: 'منتج خارجي (حسب الطلب)',
+      html: `<input id="en" class="inp" placeholder="اسم المنتج"><div class="row"><input id="ec" class="inp" inputmode="decimal" placeholder="سعر الشراء"><input id="ep" class="inp" inputmode="decimal" placeholder="سعر البيع"></div><input id="eq" class="inp" inputmode="decimal" value="1"><div class="err" id="eerr"></div>`,
+      buttons: [{ label: 'إلغاء' }, { label: 'إضافة', cls: 'gold', onClick: (close, m) => {
+        const name = m.querySelector('#en').value.trim(), cost = m.querySelector('#ec').value || '0', pr = m.querySelector('#ep').value, q = m.querySelector('#eq').value || '1';
+        try { M.parsePrice(cost); M.parsePrice(pr); M.parseQty(q); if (!name) throw Object.assign(new Error(), { code: 'NAME_REQUIRED' }); }
+        catch (e) { m.querySelector('#eerr').textContent = errText(e); return false; }
+        lines.push({ kind: 'ext', name, qty: q, price: pr, cost }); draw();
+      } }], onOpen: (m) => m.querySelector('#en').focus(),
+    });
+
+    const payload = (extra = {}) => ({ invoice: d.invoice.id, autoDistribute: !manual || undefined, ...extra,
+      lines: lines.map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });
 
     function draw() {
-      $('#dl').innerHTML = lines.map((l, k) => `<div class="line" style="grid-template-columns:1fr 70px 36px" data-k="${k}">
-        <div class="nm"><span class="muted">${l.sku} · </span>${esc(l.name)}<br><span class="muted pv" style="font-size:.78rem"></span></div>
-        <input class="inp n" inputmode="decimal" value="${esc(l.qty)}"><button class="x">✖</button></div>`).join('');
+      $('#dl').innerHTML = lines.map((l, k) => `<div class="line ${l.kind === 'ext' ? 'ext' : ''}" style="grid-template-columns:1fr 78px 64px 34px 30px" data-k="${k}">
+        <div class="nm">${l.kind === 'product' ? `<span class="muted">${l.sku} · </span>` : '＋ '}${esc(l.name)}<br><span class="muted lt" style="font-size:.78rem"></span></div>
+        <input class="inp p" inputmode="decimal" value="${esc(l.price)}" ${manual ? '' : 'disabled'}><input class="inp n" inputmode="decimal" value="${esc(l.qty)}">
+        ${manual ? '<button class="btn fit" title="ضع المتبقي على هذا السطر" style="padding:6px 0">⇆</button>' : '<span></span>'}<button class="x">✖</button></div>`).join('');
       document.querySelectorAll('#dl .line').forEach((row) => {
-        const l = lines[Number(row.dataset.k)], inp = row.querySelector('.n');
-        inp.addEventListener('focus', () => inp.select());
-        inp.addEventListener('input', () => { l.qty = inp.value; schedule(); });
+        const l = lines[Number(row.dataset.k)], pi = row.querySelector('.p'), ni = row.querySelector('.n');
+        [pi, ni].forEach((i) => i.addEventListener('focus', () => i.select()));
+        pi.addEventListener('input', () => { l.price = pi.value; schedule(); });
+        ni.addEventListener('input', () => { l.qty = ni.value; schedule(); });
         row.querySelector('.x').addEventListener('click', () => { lines.splice(Number(row.dataset.k), 1); draw(); });
+        row.querySelector('.fit')?.addEventListener('click', () => {            // put the remaining amount on this line
+          if (!last) return;
+          const k = Number(row.dataset.k), newTotal = last.lines[k].line_total + last.remaining;
+          try { const q = M.parseQty(l.qty); if (newTotal > 0 && q > 0) { l.price = price4(Math.round((newTotal * 100 * 1000) / q)); pi.value = l.price; schedule(); } } catch { /* ignore */ }
+        });
       });
       schedule();
     }
-    const payload = () => ({ invoice: d.invoice.id, lines: lines.map((l) => ({ productId: l.id, qty: l.qty })) });
     function schedule() { clearTimeout(timer); timer = setTimeout(preview, 150); }
     async function preview() {
-      $('#derr').textContent = ''; $('#save').disabled = true;
-      if (!lines.length) { $('#sum').innerHTML = '<div class="muted">أضف المنتجات المباعة وكمياتها</div>'; return; }
+      $('#derr').textContent = ''; $('#save').disabled = true; last = null;
+      if (!lines.length) { $('#sum').innerHTML = '<div class="muted">أضف المنتجات المباعة وكمياتها وأسعارها حتى يُوزَّع المبلغ كاملاً</div>'; return; }
       try {
         const p = await eng.previewQuickDetail(payload());
-        document.querySelectorAll('#dl .line').forEach((row, k) => { row.querySelector('.pv').textContent = `${money(p.lines[k].line_total)} من ${money(total)}`; });
-        $('#sum').innerHTML = `<div class="kv"><span>المجموع (ثابت)</span><b>${money(p.total)}</b></div>
-          ${can.view_cost_profit ? `<div class="kv"><span>التكلفة</span><b>${money(p.cost_total)}</b></div>
-          <div class="kv"><span>الربح الحقيقي</span><b style="color:var(--gold)">${money(p.real_profit)}</b></div>
-          <div class="kv"><span class="muted">بدل الجزافي</span><span class="muted">${money(p.flat_profit)}</span></div>` : ''}
-          ${p.warnings.length ? `<div class="err">⚠ مخزون سالب: ${p.warnings.map((w) => esc(w.name)).join('، ')}</div>` : ''}`;
-        $('#save').disabled = false;
+        last = p;
+        document.querySelectorAll('#dl .line').forEach((row, k) => {
+          row.querySelector('.lt').textContent = `= ${money(p.lines[k].line_total)}`;
+          if (!manual) { row.querySelector('.p').value = price4(p.lines[k].unit_price); }
+        });
+        const ok = p.remaining === 0;
+        $('#sum').innerHTML = `<div class="kv"><span>المبلغ الثابت</span><b>${money(p.total)}</b></div>
+          <div class="kv"><span>الموزَّع على المنتجات</span><b>${money(p.distributed)}</b></div>
+          <div class="kv"><span>المتبقي للتوزيع</span><b style="color:${ok ? 'var(--ok)' : 'var(--red)'}">${ok ? '0 ✓' : money(p.remaining)}</b></div>
+          ${can.view_cost_profit ? `<div class="kv"><span>الربح الحقيقي</span><b style="color:var(--gold)">${money(p.real_profit)}</b></div>
+            <div class="kv"><span class="muted">بدل التقديري الجزافي</span><span class="muted">${money(p.flat_profit)}</span></div>` : ''}
+          ${p.below_cost.length ? `<div class="err">⚠ بيع بأقل من التكلفة: ${p.below_cost.map((x) => esc(x.name)).join('، ')}</div>` : ''}
+          ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').length ? `<div class="err">⚠ مخزون سالب: ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => esc(w.name)).join('، ')}</div>` : ''}`;
+        $('#save').disabled = !ok;
       } catch (e) { $('#derr').textContent = errText(e); }
     }
-    $('#save').onclick = async () => {
+    $('#auto')?.addEventListener('click', async () => {
+      if (!lines.length) return;
+      try {
+        const p = await eng.previewQuickDetail(payload({ autoDistribute: true }));
+        p.lines.forEach((pl, k) => { lines[k].price = price4(pl.unit_price); });
+        draw();
+      } catch (e) { $('#derr').textContent = errText(e); }
+    });
+    async function save(allowBelowCost = false) {
       $('#save').disabled = true;
       try {
-        await eng.detailQuickSale(payload()); toast('تمت إضافة التفاصيل'); detail(d.invoice.id);
-      } catch (e) { $('#derr').textContent = errText(e); $('#save').disabled = false; }
-    };
+        await eng.detailQuickSale(payload({ allowBelowCost })); toast('تمت إضافة التفاصيل'); detail(d.invoice.id);
+      } catch (e) {
+        if (e.code === 'BELOW_COST') {
+          if (await confirmBox('بيع بأقل من التكلفة', `${e.details.items.map((i) => i.name).join('، ')} — هل تريد المتابعة؟`)) return save(true);
+        } else $('#derr').textContent = errText(e);
+        $('#save').disabled = false;
+      }
+    }
+    $('#save').onclick = () => save();
     draw();
   }
   list();

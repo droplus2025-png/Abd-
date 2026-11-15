@@ -10,7 +10,7 @@ export function shareApi(ctx) {
   return {
     // -> { text, link }  (link = null when the invoice has no party with a phone)
     async invoiceMessage(idOrNo) {
-      ctx.access.require('view_invoices');
+      /* any invoice reader */ if (!['view_invoices', 'quick_sale', 'return_customer', 'return_supplier', 'collect_debt', 'pay_supplier'].some((k) => ctx.access.can(k))) ctx.access.require('view_invoices');
       const s = await settings();
       return store.transaction(async (tx) => {
         const inv = (await tx.find('invoices', i => i.id === idOrNo || i.invoice_no === idOrNo))[0];

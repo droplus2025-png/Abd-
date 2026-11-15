@@ -14,9 +14,13 @@ const detailedSet = async (tx) => new Set((await tx.find('invoices', i => i.type
 
 export function queriesApi(ctx) {
   const { store } = ctx;
+  // reading invoices is needed by sales, returns, debts and the details of quick sales: any of these rights is enough
+  const seeInvoices = () => { if (!['view_invoices', 'quick_sale', 'return_customer', 'return_supplier', 'collect_debt', 'pay_supplier', 'expense', 'cash_count'].some((k) => ctx.access.can(k))) seeInvoices(); };
   const ownerRead = async (fn) => { ctx.access.requireOwner(); return store.transaction(fn); };
   return {
-    cashBalance: () => ownerRead(cashBalance),                         // the employee never sees the expected till
+    cashBalance: () => ownerRead(cashBalance),
+    // history of till closings (owner): counted vs expected, with the difference
+    cashSessions: () => ownerRead(async (tx) => (await tx.all('cash_sessions')).sort((a, b) => b.opened_at.localeCompare(a.opened_at))),                         // the employee never sees the expected till
 
     // store value = till + stock at cost + customer debts - supplier dues
     storeValue: () => ownerRead(async (tx) => {
@@ -39,7 +43,7 @@ export function queriesApi(ctx) {
 
     // archive: one row per invoice; cost and profit hidden if the account may not see them
     async invoices({ type, customerId, supplierId, limit = 200 } = {}) {
-      ctx.access.require('view_invoices');
+      seeInvoices();
       return store.transaction(async (tx) => {
         let rows = await tx.find('invoices', i => i.type !== 'quick_detail' && (!type || i.type === type) && (!customerId || i.customer_id === customerId) && (!supplierId || i.supplier_id === supplierId));
         rows = rows.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
@@ -49,7 +53,7 @@ export function queriesApi(ctx) {
     },
     // find invoices by number, or by the name / phone of the customer or supplier (used by the return screens)
     async searchInvoices({ text = '', types, limit = 30 } = {}) {
-      if (!ctx.access.can('view_invoices') && !ctx.access.can('return_customer') && !ctx.access.can('return_supplier')) ctx.access.require('view_invoices');
+      seeInvoices();
       const t = String(text).trim().toLowerCase();
       const digits = t.replace(/\D/g, '');                         // 0600000001 / +212600000001 / 600000001 all match
       const nums = [...new Set([digits, digits.replace(/^0+/, ''), normPhone(digits)])].filter((x) => x && x.length >= 3);
@@ -67,7 +71,7 @@ export function queriesApi(ctx) {
       });
     },
     async invoice(idOrNo) {
-      ctx.access.require('view_invoices');
+      seeInvoices();
       return store.transaction(async (tx) => {
         const inv = (await tx.find('invoices', i => i.id === idOrNo || i.invoice_no === idOrNo))[0];
         if (!inv) return null;
@@ -83,9 +87,19 @@ export function queriesApi(ctx) {
       });
     },
 
+    // quick sales still waiting for their product details (the employee is asked to complete them)
+    async pendingQuickSales() {
+      seeInvoices();
+      return store.transaction(async (tx) => {
+        const detailed = await detailedSet(tx);
+        const rows = (await tx.find('invoices', i => i.type === 'quick_sale' && !detailed.has(i.id))).sort((a, b) => a.created_at.localeCompare(b.created_at));
+        return { count: rows.length, total: rows.reduce((a, i) => a + i.total, 0), oldest: rows[0]?.created_at ?? null };
+      });
+    },
+
     // archive of one customer / supplier with the remaining amount of each invoice
     async partyStatement({ customer_id, supplier_id }) {
-      ctx.access.require('view_invoices');
+      seeInvoices();
       return store.transaction(async (tx) => {
         const rows = (await tx.find('invoices', i => (customer_id ? i.customer_id === customer_id : i.supplier_id === supplier_id)))
           .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -99,13 +113,16 @@ export function queriesApi(ctx) {
     dailyReport: () => ownerRead(async (tx) => {
       const tz = await getSetting(tx, 'timezone', 'Africa/Casablanca');
       const days = new Map();
+      const detailed = await detailedSet(tx);
       for (const i of await tx.all('invoices')) {
         const k = dayParts(new Date(i.created_at), tz).key;
-        const d = days.get(k) || { day: k, sales_count: 0, sales_total: 0, returns_total: 0, gross_profit: 0, expenses: 0, net_profit: 0 };
+        const d = days.get(k) || { day: k, sales_count: 0, sales_total: 0, returns_total: 0, gross_profit: 0, expenses: 0, net_profit: 0, undetailed_total: 0, undetailed_count: 0, estimated_profit: 0, real_profit: 0 };
         if (i.type === 'sale' || i.type === 'quick_sale') { d.sales_count++; d.sales_total += i.total; d.gross_profit += i.profit; }
+        if (i.type === 'quick_sale' && !detailed.has(i.id)) { d.undetailed_count++; d.undetailed_total += i.total; d.estimated_profit += i.profit; }   // flat % estimate
         if (i.type === 'return_customer') { d.returns_total += i.total; d.gross_profit += i.profit; }
         if (i.type === 'quick_detail') d.gross_profit += i.profit;      // real profit replaces the flat %
         if (i.type === 'expense') d.expenses += i.total;
+        d.real_profit = d.gross_profit - d.estimated_profit;
         d.net_profit = d.gross_profit - d.expenses;
         days.set(k, d);
       }

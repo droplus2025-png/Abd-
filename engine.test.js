@@ -353,62 +353,85 @@ test('invoice search (number, name, phone) and already-returned quantities', asy
   assert.equal(d.party.name, 'Karim');
 });
 
-test('quick sale details: total untouched, real profit replaces the flat %, stock out, returns on detail lines', async () => {
+test('quick sale details: whole total distributed, normal-sale freedom, real profit replaces the flat %', async () => {
   const { allocate, priceFor } = await import('./quick-detail.js');
   assert.deepEqual(allocate(100, [1, 1, 1]), [34, 33, 33]);
-  assert.equal(allocate(50000, [9000, 20000, 12000]).reduce((a, b) => a + b, 0), 50000);
   assert.equal(money.lineCents(3000, priceFor(1097, 3000)), 1097);
 
   const w = await world();
   const A = await w.owner.products.create({ name: 'A', purchasePrice: '10', salePrice: '30', qty: '100' });
   const B = await w.owner.products.create({ name: 'B', purchasePrice: '20', salePrice: '50', qty: '100' });
   const C = await w.owner.products.create({ name: 'C', purchasePrice: '5', salePrice: '12', qty: '100' });
-  const q = await w.emp.quickSale('500');                                  // flat 20 % -> profit 100
-  assert.equal(q.invoice.profit, 10000);
-  const cashBefore = await w.owner.reports.cashBalance();
-  const input = { invoice: q.invoice.invoice_no, lines: [{ productId: A.id, qty: 3 }, { productId: B.id, qty: 4 }, { productId: C.id, qty: 10 }] };
+  await w.owner.settings.set('quick_sale_profit_pct', 10);
+  const q = await w.emp.quickSale('500');                                   // 10 % flat -> estimated profit 50
+  assert.equal(q.invoice.profit, 5000);
+  assert.equal((await w.emp.reports.pendingQuickSales()).count, 1);
+  let [day] = await w.owner.reports.dailyReport();                          // the example of the owner: 500 undetailed at 10 % = 50
+  assert.equal(day.undetailed_total, 50000); assert.equal(day.estimated_profit, 5000); assert.equal(day.real_profit, 0);
 
+  const lines = [{ productId: A.id, qty: 3 }, { productId: B.id, qty: 4 }, { productId: C.id, qty: 10 }];   // default prices: 90+200+120 = 410
+  const pv = await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines });
+  assert.equal(pv.distributed, 41000); assert.equal(pv.remaining, 9000);
+  await rejects(w.emp.detailQuickSale({ invoice: q.invoice.id, lines }), 'DETAIL_TOTAL_MISMATCH');           // 90 not distributed yet
+  const auto = await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines, autoDistribute: true });
+  assert.equal(auto.remaining, 0);
+
+  const mine = [{ productId: A.id, qty: 3, price: '40' }, { productId: B.id, qty: 4, price: '60' }, { productId: C.id, qty: 10, price: '14' }];   // 120+240+140
   const before = w.store.export();
-  const pv = await w.emp.previewQuickDetail(input);
+  assert.equal((await w.emp.previewQuickDetail({ invoice: q.invoice.id, lines: mine })).remaining, 0);
   assert.deepEqual(w.store.export(), before);                              // a preview writes nothing
-  assert.equal(pv.lines.reduce((a, l) => a + l.line_total, 0), 50000);     // adds up EXACTLY to the total
-  assert.equal(pv.real_profit, 34000);                                     // 500 - (3x10 + 4x20 + 10x5)
-
-  const d = await w.emp.detailQuickSale(input);
+  const cash0 = await w.owner.reports.cashBalance();
+  const d = await w.emp.detailQuickSale({ invoice: q.invoice.id, lines: mine });
   assert.equal(d.invoice.invoice_no, `${q.invoice.invoice_no}-D`);
   assert.equal(d.invoice.total, 50000);
-  assert.equal(await w.owner.reports.cashBalance(), cashBefore);           // no cash moves
-  const [day] = await w.owner.reports.dailyReport();
-  assert.equal(day.gross_profit, 34000);                                   // real profit, the flat 100 is cancelled
+  assert.equal(d.real_profit, 34000);                                      // 500 - (3x10 + 4x20 + 10x5)
+  assert.equal(await w.owner.reports.cashBalance(), cash0);                // no external item: no cash moves
+  [day] = await w.owner.reports.dailyReport();
+  assert.equal(day.gross_profit, 34000); assert.equal(day.estimated_profit, 0); assert.equal(day.real_profit, 34000);
   assert.equal(day.sales_total, 50000); assert.equal(day.sales_count, 1);
+  assert.equal((await w.emp.reports.pendingQuickSales()).count, 0);
   const stock = Object.fromEntries((await w.owner.products.search('', 10)).map(p => [p.name, p.qty]));
   assert.deepEqual(stock, { A: 97000, B: 96000, C: 90000 });
   const view = await w.emp.reports.invoice(q.invoice.id);
   assert.equal(view.has_detail, true); assert.equal(view.lines.length, 3); assert.equal(view.real_profit, 34000);
-  assert.equal(view.invoice.is_modified, true);
-  assert.equal((await w.emp.reports.invoices()).filter(i => i.type === 'quick_detail').length, 0);   // internal record is hidden
-  await rejects(w.emp.detailQuickSale(input), 'ALREADY_DETAILED');
+  assert.equal((await w.emp.reports.invoices()).filter(i => i.type === 'quick_detail').length, 0);        // internal record hidden
+  await rejects(w.emp.detailQuickSale({ invoice: q.invoice.id, lines: mine }), 'ALREADY_DETAILED');       // once only
   const msg = await w.emp.share.invoiceMessage(q.invoice.invoice_no);
   assert.match(msg.text, /1\. A/); assert.match(msg.text, /Montant total : 500 DH/);
 
-  // returning one A through the ORIGINAL number works on the detail lines, at the real cost
+  // a return after the details works on the detail lines, at the real price and cost
   const ret = await w.emp.customerReturn({ invoice: q.invoice.invoice_no, lines: [{ originLineId: view.lines[0].id, qty: 1 }] });
-  assert.ok(ret.refunded >= 3658 && ret.refunded <= 3659);                 // 1/3 of the 109.75 shared to A
-  assert.equal(ret.invoice.parent_invoice_id, d.invoice.id);
+  assert.equal(ret.refunded, 4000);                                        // one A at 40
+  assert.equal(ret.invoice.profit, -3000);                                 // 40 - cost 10
   assert.equal((await w.owner.products.search('1'))[0].qty, 98000);
+
+  // external product: its cost leaves the till, the profit is price - cost
+  const q2 = await w.emp.quickSale('100');
+  const cash1 = await w.owner.reports.cashBalance();
+  const d2 = await w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: A.id, qty: 1, price: '60' }, { external: { name: 'X', cost: '30', price: '40', qty: 1 } }] });
+  assert.equal(d2.real_profit, 6000);                                      // 100 - (10 + 30)
+  assert.equal(await w.owner.reports.cashBalance(), cash1 - 3000);
   assert.deepEqual(await w.owner.reports.integrityCheck(), []);
 
-  // a quick sale that was already returned as a lump cannot be detailed afterwards
-  const q2 = await w.emp.quickSale('100');
-  await w.emp.customerReturn({ invoice: q2.invoice.id, lines: [{ originLineId: q2.lines[0].id, qty: 1 }] });
-  await rejects(w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'HAS_RETURNS');
-  // only a quick sale can be detailed, and the permission can be taken away
+  // below cost: same alert as a normal sale
+  const q3 = await w.emp.quickSale('5');
+  await rejects(w.emp.detailQuickSale({ invoice: q3.invoice.id, lines: [{ productId: A.id, qty: 1, price: '5' }] }), 'BELOW_COST');
+  const d3 = await w.emp.detailQuickSale({ invoice: q3.invoice.id, lines: [{ productId: A.id, qty: 1, price: '5' }], allowBelowCost: true });
+  assert.equal(d3.real_profit, -500);
+
+  // a quick sale already returned as a lump cannot be detailed; only quick sales can; no dedicated permission needed
+  const q4 = await w.emp.quickSale('100');
+  await w.emp.customerReturn({ invoice: q4.invoice.id, lines: [{ originLineId: q4.lines[0].id, qty: 1 }] });
+  await rejects(w.emp.detailQuickSale({ invoice: q4.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'HAS_RETURNS');
   const s = await w.emp.sale({ lines: [{ productId: A.id, qty: 1 }] });
   await rejects(w.emp.detailQuickSale({ invoice: s.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'BAD_PARENT');
-  await w.auth.setUserPermission(w.ownerS, w.empS.userId, 'detail_quick_sale', false);
+  assert.equal((await import('./permissions.js')).CATALOG.some(p => p.key === 'detail_quick_sale'), false);
+  // same rules as a normal sale for the employee: price edits and external items follow their permissions
+  await w.auth.setUserPermission(w.ownerS, w.empS.userId, 'edit_sale_price', false);
   const emp2 = createEngine({ store: w.store, session: await w.auth.login('5678'), now: w.now });
-  const q3 = await emp2.quickSale('50');
-  await rejects(emp2.detailQuickSale({ invoice: q3.invoice.id, lines: [{ productId: A.id, qty: 1 }] }), 'PERMISSION_DENIED');
+  const q5 = await emp2.quickSale('60');
+  await rejects(emp2.detailQuickSale({ invoice: q5.invoice.id, lines: [{ productId: A.id, qty: 2, price: '25' }] }), 'PERMISSION_DENIED');   // price differs from the product's
+  await emp2.detailQuickSale({ invoice: q5.invoice.id, lines: [{ productId: A.id, qty: 2 }] });                                                  // default price 30 x 2 = 60 is fine
 });
 
 test('party statement: every invoice of a customer with what is still owed', async () => {

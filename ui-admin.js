@@ -12,7 +12,21 @@ export async function renderAdmin(app) {
   async function draw() {
     const v = await eng.reports.storeValue();
     const emps = await auth.listEmployees(S);
+    const days = await eng.reports.dailyReport();
+    const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: c.timezone });
+    const z = { sales_count: 0, sales_total: 0, returns_total: 0, gross_profit: 0, expenses: 0, net_profit: 0, undetailed_count: 0, undetailed_total: 0, estimated_profit: 0, real_profit: 0 };
+    const t = days.find((x) => x.day === todayKey) || z;
     $('#b').innerHTML = `
+      <div class="card"><div class="grp" style="margin-top:0">تقرير اليوم</div>
+        <div class="kv"><span>المبيعات (${t.sales_count} فاتورة)</span><b>${money(t.sales_total)}</b></div>
+        <div class="kv"><span>المرتجعات</span><b>${money(t.returns_total)}</b></div>
+        <div class="kv"><span>الربح الحقيقي <span class="muted" style="font-size:.78rem">(بيع عادي + بيع سريع مفصّل)</span></span><b>${money(t.real_profit)}</b></div>
+        <div class="kv"><span>ربح تقديري <span class="muted" style="font-size:.78rem">(${t.undetailed_count} بيع سريع غير مفصّل بمبلغ ${money(t.undetailed_total)} × ${c.quick_sale_profit_pct}%)</span></span><b style="color:var(--amber)">${money(t.estimated_profit)}</b></div>
+        <div class="kv"><span>إجمالي الربح</span><b style="color:var(--gold)">${money(t.gross_profit)}</b></div>
+        <div class="kv"><span>المصاريف</span><b>−${money(t.expenses)}</b></div>
+        <div class="kv" style="font-size:1.15rem"><span>صافي الربح</span><b style="color:var(--gold)">${money(t.net_profit)}</b></div>
+        ${days.filter((x) => x.day !== todayKey).slice(0, 10).length ? `<div class="grp">الأيام السابقة</div>${days.filter((x) => x.day !== todayKey).slice(0, 10).map((x) => `<div class="kv"><span>${x.day}</span><span class="muted">مبيعات ${money(x.sales_total)}</span><b>${money(x.net_profit)}</b></div>`).join('')}` : ''}</div>
+
       <div class="card"><div class="grp" style="margin-top:0">قيمة المحل الآن</div>
         <div class="kv"><span>الصندوق</span><b>${money(v.cash)}</b></div>
         <div class="kv"><span>المخزون (بسعر الشراء)</span><b>${money(v.stock)}</b></div>

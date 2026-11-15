@@ -20,7 +20,7 @@ const ERR = {
   BAD_NUMBER: 'رقم غير صالح', TOO_MANY_DECIMALS: 'عدد الخانات العشرية أكثر من المسموح', RETURN_EXCEEDS: 'الكمية أكبر من المباعة',
   STOCK_INSUFFICIENT: 'المخزون لا يكفي', NOT_SETUP: 'لم يتم إنشاء حساب المالك بعد', ALREADY_SETUP: 'حساب المالك موجود',
   CHECK_FAILED: 'خطأ في توازن الأرقام، لم تُحفظ العملية',
-  ALREADY_DETAILED: 'تمت إضافة تفاصيل هذه الفاتورة من قبل', HAS_RETURNS: 'لا يمكن تفصيل فاتورة تم إرجاعها',
+  DETAIL_TOTAL_MISMATCH: 'يجب توزيع المبلغ كاملاً على المنتجات', ALREADY_DETAILED: 'تمت إضافة تفاصيل هذه الفاتورة من قبل', HAS_RETURNS: 'لا يمكن تفصيل فاتورة تم إرجاعها',
   BAD_PARENT: 'هذه الفاتورة لا تقبل هذه العملية', CANNOT_ALLOCATE: 'تعذّر توزيع المبلغ على هذه الكميات', INVOICE_NOT_FOUND: 'الفاتورة غير موجودة',
 };
 export const errText = (e) => ERR[e?.code] || e?.message || 'حدث خطأ';
