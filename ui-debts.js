@@ -65,7 +65,7 @@ export async function renderDebts(app, { mode = 'customer' } = {}) {
           toast(`تم · فاتورة ${r.invoice.invoice_no}${r.warnings?.length ? ' ⚠ الصندوق سالب' : ''}`, false, 3000); await load();
         } catch (e) { m.querySelector('#perr').textContent = errText(e); return false; }
       } }],
-      onOpen: (m) => { const a = m.querySelector('#amt'); a.focus(); a.select(); a.addEventListener('keydown', (e) => { if (e.key === 'Enter') m.querySelector('.mbtns .gold').click(); }); },
+      onOpen: (m) => { const a = m.querySelector('#amt'); a.focus(); a.select(); },
     });
   }
 

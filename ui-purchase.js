@@ -1,5 +1,5 @@
 // Purchase screen: supplier, product lines (existing or new), partial payment -> supplier debt.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, partySuggest } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, showStrip, money, price4, partySuggest } from './ui-core.js';
 import { money as M } from './index.js';
 
 export async function renderPurchase(app) {
@@ -90,7 +90,6 @@ export async function renderPurchase(app) {
         const paid = m.querySelector('#paid'), info = m.querySelector('#info');
         const upd = () => { const p = safe(() => M.parseMoney(paid.value || 0), 0); info.textContent = p > T ? '⚠ المبلغ أكبر من الفاتورة' : p < T ? `دين للمورد: ${money(T - p)}` : ''; };
         paid.addEventListener('input', upd); paid.addEventListener('focus', () => paid.select());
-        paid.addEventListener('keydown', (e) => { if (e.key === 'Enter') m.querySelector('.mbtns .gold').click(); });
         upd(); paid.focus(); paid.select();
       },
     });
@@ -117,13 +116,10 @@ export async function renderPurchase(app) {
     } catch (e) { err.textContent = errText(e); return false; }
   }
   function done(r, msg) {
-    const notes = r.warnings.some((w) => w.type === 'CASH_NEGATIVE') ? '<div class="err">⚠ رصيد الصندوق أصبح سالباً</div>' : '';
-    openModal({
-      title: `✔ تم الشراء · ${r.invoice.invoice_no}`,
-      html: `<div class="kv"><span>الإجمالي</span><b>${money(r.invoice.total)}</b></div><div class="kv"><span>المدفوع</span><b>${money(r.invoice.paid)}</b></div>
-        ${r.invoice.credit_amount ? `<div class="kv"><span>دين للمورد</span><b>${money(r.invoice.credit_amount)}</b></div>` : ''}${notes}`,
-      buttons: [{ label: 'تم' }, ...(msg?.link ? [{ label: 'واتساب', cls: 'gold', onClick: () => { window.open(msg.link, '_blank'); eng.share.markSent(msg.invoice_id).catch(() => {}); } }] : [])],
-    });
+    const neg = r.warnings.some((w) => w.type === 'CASH_NEGATIVE');
+    showStrip({ warn: neg, ms: 15000,
+      html: `✔ ${esc(r.invoice.invoice_no)} · <b>${money(r.invoice.total)}</b>${r.invoice.credit_amount ? ` · دين للمورد ${money(r.invoice.credit_amount)}` : ''}${neg ? '<br>⚠ رصيد الصندوق سالب' : ''}`,
+      actions: msg?.link ? [{ label: 'واتساب', cls: 'gold', onClick: () => { window.open(msg.link, '_blank'); eng.share.markSent(msg.invoice_id).catch(() => {}); } }] : [] });
   }
   drawList();
 }

@@ -16,8 +16,8 @@ export function openExternal(app, onAdd) {
   };
   openModal({
     title: 'منتج خارجي (حسب الطلب)',
-    html: `<input id="en" class="inp" placeholder="اسم المنتج"><div class="row"><input id="ec" class="inp" inputmode="decimal" placeholder="سعر الشراء">
-      <input id="ep" class="inp" inputmode="decimal" placeholder="سعر البيع"></div><input id="eq" class="inp" inputmode="decimal" value="1" placeholder="الكمية"><div class="err" id="eerr"></div>`,
+    html: `<input id="en" class="inp" placeholder="اسم المنتج" autocomplete="off"><div class="row"><input id="ec" class="inp" inputmode="decimal" placeholder="الشراء" style="flex:1">
+      <input id="ep" class="inp" inputmode="decimal" placeholder="البيع" style="flex:1"><input id="eq" class="inp" inputmode="decimal" value="1" placeholder="الكمية" style="flex:.6"></div><div class="err" id="eerr"></div>`,
     buttons: [
       { label: 'إلغاء' },
       { label: 'إضافة', cls: 'gold', onClick: (close, m) => { const v = read(m); if (!v) return false; onAdd(v); } },

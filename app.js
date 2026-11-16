@@ -2,6 +2,7 @@
 import { createMemoryStore, createAuth, createEngine } from './index.js';
 import { openPersist } from './idb-persist.js';
 import { APP_VERSION } from './version.js';
+import './viewport.js';
 import { toast } from './ui-core.js';
 import { renderLogin, renderSetup } from './ui-login.js';
 import { renderHome, renderSoon } from './ui-home.js';

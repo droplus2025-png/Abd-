@@ -1,5 +1,5 @@
 // Sale screen: search + external product, quick-sale keypad, cart, pay.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, partySuggest, priceShort } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, showStrip, money, price4, qtyStr, partySuggest, priceShort } from './ui-core.js';
 import { openExternal } from './ui-external.js';
 import { money as M } from './index.js';
 
@@ -11,6 +11,7 @@ export async function renderSale(app) {
   let searching = false;      // search box focused: show the product list instead of the keypad
   let normal = false;         // false = QUICK mode (keypad); true = NORMAL sale mode (the quick box gives its place to the pay button)
   let busy = false;
+  let lastAdded = null;       // name of the last product added from the search (shown in the cart bar)
 
   mount(`<div class="screen">${header('بيع')}
     <div class="body salegrid">
@@ -63,17 +64,34 @@ export async function renderSale(app) {
   }
   const onMq = () => { if (!document.contains(main)) { mq.removeEventListener('change', onMq); return; } draw(); };   // never draw on a screen that was left
   mq.addEventListener('change', onMq);
+  // phone-dialer layout (1 2 3 on top, read left to right); [00] saves taps on round amounts; C clears everything
+  const press = (k) => {
+    if (k === '⌫') quick = quick.slice(0, -1);
+    else if (k === 'C') quick = '';
+    else if (k === '.') { if (!quick.includes('.')) quick = (quick || '0') + '.'; }
+    else {
+      const add = k === '00' && !quick ? '0' : k;
+      if (quick.includes('.') && quick.split('.')[1].length + add.length > 2) return;
+      if (quick.length + add.length > 9) return;
+      quick = quick === '0' && !quick.includes('.') ? (add === '00' ? '0' : add) : quick + add;
+    }
+    refreshTotals();
+  };
   function drawKeypad() {
-    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '.'];
-    main.innerHTML = `<div class="keypad">${keys.map((k) => `<button class="key" data-k="${k}">${k}</button>`).join('')}</div>`;
-    main.querySelectorAll('.key').forEach((b) => b.addEventListener('click', () => {
-      const k = b.dataset.k;
-      if (k === '⌫') quick = quick.slice(0, -1);
-      else if (k === '.') { if (!quick.includes('.')) quick = (quick || '0') + '.'; }
-      else if (!(quick.includes('.') && quick.split('.')[1].length >= 2) && quick.length < 9) quick = quick === '0' ? k : quick + k;
-      refreshTotals();
-    }));
+    const keys = [['1'], ['2'], ['3'], ['⌫', 'fn'], ['4'], ['5'], ['6'], ['C', 'fn'], ['7'], ['8'], ['9'], ['00', 'fn'], ['0', 'w3'], ['.', 'fn']];
+    main.innerHTML = `<div class="keypad">${keys.map(([k, c = '']) => `<button class="key ${c}" data-k="${k}">${k}</button>`).join('')}</div>`;
+    main.querySelectorAll('.key').forEach((b) => b.addEventListener('click', () => press(b.dataset.k)));
   }
+  // physical keyboard (touch PC): digits, Backspace, Delete = clear, Enter = pay -- only while the quick keypad is showing
+  const onKey = (e) => {
+    if (!document.contains(main)) { document.removeEventListener('keydown', onKey); return; }
+    if (isNormal() || document.querySelector('.modal') || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
+    if (/^[0-9]$/.test(e.key)) press(e.key); else if (e.key === '.' || e.key === ',') press('.');
+    else if (e.key === 'Backspace') press('⌫'); else if (e.key === 'Delete' || e.key === 'Escape') press('C');
+    else if (e.key === 'Enter') onPay(); else return;
+    e.preventDefault();
+  };
+  document.addEventListener('keydown', onKey);
   function drawCart() {
     if (!cart.length) { main.innerHTML = '<div class="muted" style="padding:18px;text-align:center">اختر منتجاً من القائمة، أو أضف منتجاً خارجياً</div>'; return; }
     main.innerHTML = `<div class="cart">${cart.map((l, i) => `
@@ -87,7 +105,13 @@ export async function renderSale(app) {
       [pi, ni].forEach((inp) => inp.addEventListener('focus', () => inp.select()));
       pi.addEventListener('input', () => { l.price = pi.value; refreshTotals(); });
       ni.addEventListener('input', () => { l.qty = ni.value; refreshTotals(); });
-      row.querySelector('.x').addEventListener('click', () => { cart.splice(Number(row.dataset.i), 1); draw(); });
+      pi.enterKeyHint = 'next'; ni.enterKeyHint = 'done';
+      pi.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ni.focus(); } });
+      ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); qIn.focus(); } });       // quantity typed -> straight back to the search for the next product
+      row.querySelector('.x').addEventListener('click', () => {
+        const i = Number(row.dataset.i), [gone] = cart.splice(i, 1); draw();
+        showStrip({ warn: true, ms: 5000, html: `حُذف: ${esc(gone.name)}`, actions: [{ label: '↩ تراجع', cls: 'gold', onClick: () => { cart.splice(i, 0, gone); normal = true; draw(); } }] });
+      });
     });
   }
   // result row:  [Sku - product]  [V:sale price]  [A<purchase> Q<quantity>]  (the code is a reminder for the employee)
@@ -97,28 +121,46 @@ export async function renderSale(app) {
     if (!mq.matches && !isNormal()) return;
     const q = query.toLowerCase();
     const exact = (p) => !!q && (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q);
-    target.innerHTML = `<div class="results">${rows.length ? rows.map((p) => `
-      <button class="res rs ${exact(p) ? 'exact' : ''}" data-id="${p.id}"><span class="rn"><b class="sku">${p.sku}</b> - ${esc(p.name)}</span>
+    const inCart = (p) => { const l = cart.find((x) => x.kind === 'product' && x.productId === p.id); return l ? `<span class="inc">×${esc(l.qty)}</span>` : ''; };
+    const bar = cart.length ? `<button class="cartbar" id="cartbar"><span>🛒 <b>${cart.length}</b> ${lastAdded ? `· آخر: ${esc(lastAdded)}` : ''}</span><span>عرض السلة ‹</span></button>` : '';
+    target.innerHTML = `<div class="results">${bar}${rows.length ? rows.map((p) => `
+      <button class="res rs ${exact(p) ? 'exact' : ''}" data-id="${p.id}"><span class="rn"><b class="sku">${p.sku}</b> - ${esc(p.name)}${inCart(p)}</span>
         <span class="rv">V:${priceShort(p.sale_price)}</span>
         <span class="rc"><span class="ra">A${priceShort(p.purchase_price)}</span> <span class="rq ${p.qty <= 0 ? 'neg' : ''}">Q${qtyStr(p.qty) || 0}</span></span></button>`).join('')
       : '<div class="muted" style="padding:14px">لا نتائج</div>'}</div>`;
+    target.querySelectorAll('.res, .cartbar').forEach((b) => b.addEventListener('pointerdown', (e) => e.preventDefault()));   // keep the keyboard / focus: no flicker between two products
     target.querySelectorAll('.res').forEach((b) => b.addEventListener('click', () => addProduct(rows.find((r) => r.id === b.dataset.id))));
+    target.querySelector('#cartbar')?.addEventListener('click', showCart);
+    lastRows = rows;
   }
+  let lastRows = [];
+  function showCart() { query = ''; qIn.value = ''; searching = false; qIn.blur(); draw(); }
 
   function addProduct(p) {
     const ex = cart.find((l) => l.kind === 'product' && l.productId === p.id);
     if (ex) ex.qty = String(safe(() => M.parseQty(ex.qty || 0) / 1000, 0) + 1);
     else cart.push({ kind: 'product', productId: p.id, sku: p.sku, name: p.name, qty: '1', price: price4(p.sale_price) });
-    normal = true; query = ''; qIn.value = ''; qIn.blur(); draw();
+    lastAdded = p.name; normal = true; draw();
+    if (document.activeElement === qIn) qIn.select();               // the search stays open: type the next product (text is selected, typing replaces it)
+    else { query = ''; qIn.value = ''; draw(); }
   }
 
   // ---- events
   let t;
   qIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { query = qIn.value.trim(); draw(); }, 120); });
-  qIn.addEventListener('focus', () => { searching = true; normal = true; draw(); });
+  qIn.enterKeyHint = 'go';
+  qIn.addEventListener('focus', () => { searching = true; normal = true; draw(); setTimeout(() => qIn.select(), 0); });
+  qIn.addEventListener('keydown', async (e) => {                   // Enter: add the exact match (number or name), or the only result
+    if (e.key !== 'Enter') return;
+    e.preventDefault(); clearTimeout(t); query = qIn.value.trim();
+    await drawResults(mq.matches ? $('#resA') : main);
+    const q = query.toLowerCase();
+    const hit = lastRows.find((p) => (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q)) || (lastRows.length === 1 ? lastRows[0] : null);
+    if (hit) addProduct(hit); else if (!lastRows.length) toast('لا نتائج', true, 1200);
+  });
   qIn.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== qIn && !query) { searching = false; draw(); } }, 250));
   $('#lblNormal').onclick = () => {                                // tap "normal sale": quick box -> pay button. Tap again (empty cart) to go back to quick mode
-    if (cart.length) return;
+    if (cart.length) return showCart();                           // items in the cart: this cell brings the cart back
     normal = !normal; query = ''; qIn.value = ''; searching = false; draw();
   };
   $('#hdrBack').onclick = async () => { if (cart.length && !(await confirmBox('السلة غير فارغة', 'الخروج دون حفظ؟', 'خروج', 'بقاء'))) return; app.go('home'); };
@@ -136,7 +178,7 @@ export async function renderSale(app) {
     busy = true; refreshTotals();
     try {
       const r = await eng.quickSale(quick);
-      quick = ''; toast(`تم · فاتورة ${r.invoice.invoice_no}`);
+      showStrip({ ms: 3500, html: `✔ ${esc(r.invoice.invoice_no)} · <b>${money(r.invoice.total)}</b>` }); quick = '';
     } catch (e) { toast(errText(e), true, 3500); }
     busy = false; draw();
   }
@@ -145,7 +187,8 @@ export async function renderSale(app) {
     openModal({
       title: `الدفع · ${money(T)}`,
       html: `<div class="lbl">المبلغ المدفوع</div><input id="paid" class="inp" inputmode="decimal" value="${money(T)}">
-        <div id="info" class="muted"></div>
+        <div class="chips2" id="tender">${tenders(T).map((c) => `<button class="chip ${c.cls}" data-v="${c.v}">${c.label}</button>`).join('')}</div>
+        <div id="info" class="chg"></div>
         <div id="cust" style="display:none;gap:8px;flex-direction:column"><input id="cn" class="inp" placeholder="اسم الزبون"><input id="cp" class="inp" inputmode="tel" placeholder="رقم الهاتف"><div id="sg"></div></div>
         <div class="err" id="perr"></div>`,
       buttons: [{ label: 'إلغاء' }, { label: 'تأكيد', cls: 'gold', onClick: (close, m) => confirmSale(m) }],
@@ -153,15 +196,25 @@ export async function renderSale(app) {
         const paid = m.querySelector('#paid'), info = m.querySelector('#info'), cust = m.querySelector('#cust');
         const upd = () => {
           const p = safe(() => M.parseMoney(paid.value || 0), 0);
-          if (p >= T) { info.textContent = p > T ? `الباقي للزبون: ${money(p - T)}` : ''; cust.style.display = 'none'; }
-          else { info.textContent = `دين على الزبون: ${money(T - p)}`; cust.style.display = 'flex'; }
+          if (p >= T) { info.textContent = p > T ? `الباقي للزبون: ${money(p - T)}` : ''; info.className = 'chg'; cust.style.display = 'none'; }
+          else { info.textContent = `دين على الزبون: ${money(T - p)}`; info.className = 'chg debt'; cust.style.display = 'flex'; }
         };
         partySuggest(app, 'customer', m.querySelector('#cn'), m.querySelector('#cp'), m.querySelector('#sg'));
-        paid.addEventListener('input', upd); paid.addEventListener('focus', () => paid.select());
+        paid.addEventListener('input', upd);
+        m.querySelectorAll('#tender .chip').forEach((c) => c.addEventListener('click', () => { paid.value = c.dataset.v; upd(); }));
         upd(); paid.focus(); paid.select();
-        paid.addEventListener('keydown', (e) => { if (e.key === 'Enter') m.querySelector('.mbtns .gold').click(); });
       },
     });
+  }
+  // one-tap amounts: exact, the next round notes above the total, or "all on credit"
+  function tenders(T) {
+    const out = [{ label: 'المبلغ كاملاً', v: money(T), cls: 'full' }], seen = new Set([T]);
+    for (const d of [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]) {
+      const v = Math.ceil(T / (d * 100)) * d * 100;
+      if (!seen.has(v) && seen.size < 4) { seen.add(v); out.push({ label: money(v), v: money(v), cls: '' }); }
+    }
+    out.push({ label: 'دين', v: '0', cls: 'debt' });
+    return out;
   }
   async function confirmSale(m, allowBelowCost = false) {
     const err = m.querySelector('#perr');
@@ -188,18 +241,13 @@ export async function renderSale(app) {
     }
   }
   function done(r, msg) {
-    const notes = r.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => `⚠ مخزون سالب: ${esc(w.name)}`).join('<br>');
-    openModal({
-      title: `✔ تمت العملية · ${r.invoice.invoice_no}`,
-      html: `<div class="kv"><span>الإجمالي</span><b>${money(r.invoice.total)}</b></div>
-        ${r.change ? `<div class="kv"><span>الباقي للزبون</span><b>${money(r.change)}</b></div>` : ''}
-        ${r.invoice.credit_amount ? `<div class="kv"><span>دين</span><b>${money(r.invoice.credit_amount)}</b></div>` : ''}
-        ${notes ? `<div class="err">${notes}</div>` : ''}`,
-      buttons: [{ label: 'تم' }, ...(msg ? [{ label: 'واتساب', cls: 'gold', onClick: () => {
+    const notes = r.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => `⚠ مخزون سالب: ${esc(w.name)}`).join(' · ');
+    const first = r.change ? `الباقي للزبون <b>${money(r.change)}</b>` : r.invoice.credit_amount ? `دين <b>${money(r.invoice.credit_amount)}</b>` : `✔ <b>${money(r.invoice.total)}</b>`;
+    showStrip({ warn: !!notes, ms: 20000, html: `${esc(r.invoice.invoice_no)} · ${first}${notes ? `<br>${notes}` : ''}`,
+      actions: msg ? [{ label: 'واتساب', cls: 'gold', onClick: () => {
         window.open(msg.link || `https://wa.me/?text=${encodeURIComponent(msg.text)}`, '_blank');
         eng.share.markSent(msg.invoice_id).catch(() => {});
-      } }] : [])],
-    });
+      } }] : [] });
   }
 
   draw();

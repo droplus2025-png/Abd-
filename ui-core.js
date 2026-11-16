@@ -39,8 +39,31 @@ export function openModal({ title, html = '', buttons = [], tall = false, onOpen
     const r = await buttons[Number(btn.dataset.i)].onClick?.(close, m);
     if (r !== false) close();
   }));
+  // Enter: next visible field; on the last one = the gold (confirm) button. The keyboard key is labelled accordingly.
+  const fields = () => [...m.querySelectorAll('input:not([type=hidden]):not([disabled]),textarea')].filter((el) => el.offsetParent !== null);
+  m.addEventListener('focusin', (e) => { const f = fields(); if (e.target.tagName === 'INPUT') e.target.enterKeyHint = f[f.length - 1] === e.target ? 'done' : 'next'; });
+  m.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    const f = fields(), i = f.indexOf(e.target);
+    e.preventDefault();
+    if (i >= 0 && i < f.length - 1) f[i + 1].focus(); else m.querySelector('.mbtns .gold')?.click();
+  });
   onOpen?.(m, close);
   return { el: m, close };
+}
+// Non-blocking result strip laid OVER the header (no layout shift, nothing to tap to continue): auto-hides.
+export function showStrip({ html, actions = [], ms = 12000, warn = false }) {
+  document.querySelector('.strip')?.remove();
+  const hdr = document.querySelector('.hdr');
+  if (!hdr) { toast(html.replace(/<[^>]+>/g, ' '), warn, 3500); return null; }
+  const s = document.createElement('div');
+  s.className = 'strip' + (warn ? ' warn' : '');
+  s.innerHTML = `<div class="sm">${html}</div>${actions.map((a, i) => `<button class="btn ${a.cls || ''}" data-i="${i}">${esc(a.label)}</button>`).join('')}<button class="btn sx">✕</button>`;
+  hdr.appendChild(s);
+  const t = setTimeout(() => s.remove(), ms);
+  s.querySelector('.sx').onclick = () => { clearTimeout(t); s.remove(); };
+  actions.forEach((a, i) => { s.querySelector(`[data-i="${i}"]`).onclick = () => { a.onClick?.(s); if (a.close !== false) { clearTimeout(t); s.remove(); } }; });
+  return s;
 }
 export const confirmBox = (title, text, yes = 'متابعة', no = 'رجوع') => new Promise((res) => openModal({
   title, html: `<div>${esc(text)}</div>`,
