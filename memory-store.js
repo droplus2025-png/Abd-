@@ -2,6 +2,7 @@
 // Same async API as the future IndexedDB store (find/get/insert/update inside transaction()).
 // Ledgers are append-only; invoices are frozen except a few harmless fields.
 import { fail } from './errors.js';
+import { mergeRemote } from './sync-merge.js';
 
 const PK = { settings: 'key', sku_registry: 'sku' };           // every other table uses `id`
 export const TABLES = ['app_users', 'settings', 'products', 'sku_registry', 'price_history',
@@ -96,6 +97,27 @@ export function createMemoryStore(initial, { persist } = {}) {
       queue = p.catch(() => {});
       return p;
     },
+    // rows coming from other devices (sync): merged in ONE serialised step, written to disk as "remote" (not re-sent),
+    // our own corrections (renamed duplicate SKU / invoice number) are written as normal changes (they get sent)
+    applyRemote(rows, dirty, { deviceId, now = () => new Date() } = {}) {
+      const run = async () => {
+        const snap = clone(state);
+        try {
+          const r = mergeRemote(state, rows, { dirty, deviceId, nowIso: now().toISOString(), pk, appendOnly: APPEND_ONLY });
+          const put = (list) => list.map(([table, row]) => ({ op: 'put', table, row: clone(row) }));
+          if (persist) {
+            if (r.applied.length) await persist(put(r.applied), { remote: true });
+            if (r.local.length) await persist(put(r.local));
+          }
+          if (r.applied.length || r.local.length) listeners.forEach(l => l(state));
+          return { applied: r.applied.length, local: r.local.length, settled: r.settled };
+        } catch (e) { state = snap; throw e; }
+      };
+      const p = queue.then(run, run);
+      queue = p.catch(() => {});
+      return p;
+    },
+    peek(t, id) { return clone(state[t]?.find(r => r[pk(t)] === id)); },
     onCommit(fn) { listeners.push(fn); },
     export() { return clone(state); },
   };

@@ -2,7 +2,7 @@
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function mount(html) { const app = $('#app'); app.innerHTML = html; return app; }
+export function mount(html) { const app = $('#app'); app.innerHTML = html; window.__app?.sync && window.__app.paintSync(); return app; }
 
 export function toast(msg, bad = false, ms = 2200) {
   const t = document.createElement('div');
@@ -72,7 +72,7 @@ export const confirmBox = (title, text, yes = 'متابعة', no = 'رجوع') =
 
 // header: back (right) | title (center) | logo (left)
 export function header(title, backLabel = 'الرئيسية') {
-  return `<div class="hdr"><button class="back" id="hdrBack">⌂ ${esc(backLabel)}</button><div class="title">${esc(title)}</div><img class="logo" src="logo.png" alt=""></div>`;
+  return `<div class="hdr"><button class="back" id="hdrBack">⌂ ${esc(backLabel)}</button><div class="title">${esc(title)}<span class="sdot off"></span></div><img class="logo" src="logo.png" alt=""></div>`;
 }
 export const money = (cents) => {
   const neg = cents < 0, a = Math.abs(cents);

@@ -1,6 +1,8 @@
 // Boot, router, session. Screens live in ui-*.js
 import { createMemoryStore, createAuth, createEngine } from './index.js';
 import { openPersist } from './idb-persist.js';
+import { createSync, supabaseTransport } from './sync.js';
+import { SUPABASE } from './sync-config.js';
 import { APP_VERSION } from './version.js';
 import './viewport.js';
 import { toast } from './ui-core.js';
@@ -22,7 +24,7 @@ export const app = { screen: null, updatePending: false };
 const deviceId = localStorage.getItem('pos_device_id') || (() => { const id = crypto.randomUUID(); localStorage.setItem('pos_device_id', id); return id; })();
 
 app.go = async (name, params = {}) => {
-  app.screen = name;
+  app.screen = name; app.syncHook = null;
   if (name === 'home' && app.updatePending) return applyUpdate();
   try { await SCREENS[name](app, params); }
   catch (e) { console.error(e); toast(e.message || 'خطأ', true, 4000); }
@@ -37,6 +39,18 @@ app.startSession = async (session) => {
 };
 app.refreshCfg = async () => { app.cfg = await app.engine.settings.get(); };
 app.logout = () => { app.session = null; app.engine = null; app.go('login'); };
+
+// ------------------------------------------------------------- sync indicator (a dot in every header)
+const SYNC_TIP = { off: '', idle: 'متزامن', syncing: 'جارٍ المزامنة…', offline: 'بلا إنترنت — ستتم المزامنة تلقائياً', error: 'خطأ في المزامنة', badcode: 'رمز الربط غير صحيح' };
+function paintSync(s) {
+  document.querySelectorAll('.sdot').forEach((el) => {
+    el.className = `sdot ${s.state}${s.pending ? ' pend' : ''}`;
+    el.title = `${SYNC_TIP[s.state] || ''}${s.pending ? ` · ${s.pending} بانتظار الإرسال` : ''}`;
+    el.textContent = s.pending && s.state !== 'off' ? s.pending : '';
+  });
+  app.syncHook?.(s);
+}
+app.paintSync = () => paintSync(app.sync.status);
 
 // ------------------------------------------------------------- updates (applied only on the home screen)
 async function checkUpdate() {
@@ -54,6 +68,9 @@ async function boot() {
   app.persist = persist;
   app.store = createMemoryStore(Object.keys(state).length ? state : undefined, { persist: persist.persist });
   app.auth = createAuth({ store: app.store });
+  app.sync = createSync({ store: app.store, meta: persist.meta, transport: supabaseTransport(SUPABASE), deviceId });
+  app.sync.onStatus(paintSync);
+  app.sync.start();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
   setInterval(checkUpdate, 60 * 60 * 1000);

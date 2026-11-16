@@ -227,3 +227,11 @@ body.kb .results,body.kb #main .results{max-height:none}
 .chips2 .chip.debt{border-color:var(--amber);color:var(--amber)}
 .chg{font-size:1.15rem;font-weight:800;color:var(--gold);min-height:1.4em}
 .chg.debt{color:var(--amber)}
+
+/* sync dot (in every header title) */
+.sdot{display:inline-block;min-width:10px;height:10px;border-radius:10px;margin-inline-start:8px;vertical-align:middle;font-size:.62rem;line-height:10px;color:#041;font-weight:800;text-align:center;padding:0 3px}
+.sdot.off{display:none}
+.sdot.idle{background:var(--green)}.sdot.syncing{background:var(--gold);animation:sp 1s infinite}
+.sdot.offline{background:#7c8aa8}.sdot.error,.sdot.badcode{background:#e5484d}
+.sdot.pend{min-width:16px;height:16px;line-height:16px;font-size:.7rem;border-radius:9px}
+@keyframes sp{50%{opacity:.35}}

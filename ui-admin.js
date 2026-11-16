@@ -3,6 +3,7 @@ import { mount, $, esc, header, toast, errText, openModal, confirmBox, money } f
 import { APP_VERSION } from './version.js';
 import { renderInvoice } from './invoice-text.js';
 import { DEFAULT_SETTINGS } from './settings.js';
+import { linkCode } from './sync.js';
 
 const GROUPS = { sales: 'البيع', purchases: 'الشراء', returns: 'الإرجاع', money: 'المال والصندوق', stock: 'المخزون', other: 'أخرى' };
 
@@ -56,6 +57,15 @@ export async function renderAdmin(app) {
         <button class="btn" id="restore" style="width:100%;margin-top:8px">⬆ استعادة من ملف</button>
         <input type="file" id="restoreFile" accept=".json,application/json" style="display:none">
         <div class="muted" style="font-size:.78rem;margin-top:6px">الملف يحوي كل البيانات وبصمات كلمات المرور. احفظه في مكان آمن (Drive أو واتساب لنفسك). الاستعادة تفحص الملف أولاً وتستبدل كل ما في هذا الجهاز.</div></div>
+
+      <div class="card"><div class="grp" style="margin-top:0">المزامنة بين الأجهزة</div>
+        <div class="kv"><span>الحالة</span><b id="syState">…</b></div>
+        <div class="kv"><span>بانتظار الإرسال</span><b id="syPend">…</b></div>
+        <div class="kv"><span>آخر مزامنة</span><b id="syLast">—</b></div>
+        <div class="row" style="margin-top:8px"><button class="btn gold" id="syNow" style="flex:1">مزامنة الآن</button>
+          <button class="btn" id="syLink" style="flex:1">${linkCode.get() ? 'تغيير الرمز' : 'ربط هذا الجهاز'}</button></div>
+        ${linkCode.get() ? '<button class="btn red" id="syOff" style="width:100%;margin-top:8px">فك الربط</button>' : ''}
+        <div class="muted" style="font-size:.78rem;margin-top:6px">تعمل المزامنة وحدها عند توفر الإنترنت. بدون إنترنت يستمر البرنامج بالعمل وتُرسل العمليات لاحقاً.</div></div>
 
       <div class="card" style="grid-column:1/-1"><div class="grp" style="margin-top:0">شكل الفاتورة (واتساب)</div>
         <div class="tplgrid">
@@ -142,6 +152,30 @@ export async function renderAdmin(app) {
         await app.refreshCfg(); toast('تم حفظ الإعدادات');
       } catch (e) { toast(errText(e), true, 3000); }
     };
+    // ---- sync card
+    const SY = { off: 'غير مرتبط', idle: 'متزامن ✔', syncing: 'جارٍ المزامنة…', offline: 'بلا إنترنت', error: 'خطأ', badcode: 'رمز الربط غير صحيح' };
+    const paintSy = (s) => {
+      if (!$('#syState')) return;
+      $('#syState').textContent = SY[s.state] + (s.error && s.state === 'error' ? ` (${s.error.slice(0, 40)})` : '');
+      $('#syPend').textContent = s.pending; $('#syLast').textContent = s.last ? new Date(s.last).toLocaleTimeString('ar-MA-u-nu-latn', { hour: '2-digit', minute: '2-digit' }) : '—';
+    };
+    app.syncHook = paintSy; paintSy(app.sync.status);
+    $('#syNow').onclick = async () => { if (!linkCode.get()) return toast('اربط الجهاز أولاً', true); await app.sync.syncNow(); };
+    $('#syLink').onclick = () => openModal({
+      title: 'رمز ربط المحل', html: `<div class="muted">الرمز الذي أنشأته في قاعدة البيانات. يُدخل مرة واحدة في كل جهاز.</div>
+        <input id="lc" class="inp" placeholder="رمز الربط" autocomplete="off" style="direction:ltr;text-align:center"><div class="err" id="err"></div>`,
+      buttons: [{ label: 'إلغاء' }, { label: 'ربط', cls: 'gold', onClick: async (close, m) => {
+        const btn = m.querySelector('.mbtns .gold'); btn.disabled = true; btn.textContent = 'جارٍ الإرسال…';
+        try { await app.sync.linkMain(m.querySelector('#lc').value.trim()); toast('تم الربط'); draw(); }
+        catch (e) {
+          m.querySelector('#err').textContent = e.kind === 'badcode' ? 'رمز الربط غير صحيح' : e.message === 'SERVER_NOT_EMPTY' ? 'هذا المحل في السحابة يحوي بيانات من جهاز آخر؛ لا يمكن ربط جهاز له بيانات مستقلة. اربط جهازاً جديداً من شاشة الإعداد الأول.' : e.kind === 'network' ? 'لا يوجد اتصال بالإنترنت' : errText(e);
+          btn.disabled = false; btn.textContent = 'ربط'; return false;
+        }
+      } }], onOpen: (m) => m.querySelector('#lc').focus() });
+    $('#syOff')?.addEventListener('click', async () => {
+      if (!(await confirmBox('فك الربط', 'يتوقف هذا الجهاز عن المزامنة وتبقى بياناته كما هي. متابعة؟', 'فك الربط', 'إلغاء'))) return;
+      await app.sync.unlink(); draw();
+    });
     $('#addEmp').onclick = () => openModal({
       title: 'إضافة موظف', html: `<input id="n" class="inp" placeholder="اسم الموظف"><input id="c" class="inp" type="password" placeholder="كلمة مروره (4 أحرف على الأقل)"><div class="err" id="err"></div>`,
       buttons: [{ label: 'إلغاء' }, { label: 'حفظ', cls: 'gold', onClick: async (close, m) => {
