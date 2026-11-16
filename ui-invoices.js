@@ -1,6 +1,7 @@
 // Invoices archive: search, filters, detail, WhatsApp, and product details for quick sales.
 import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen } from './ui-core.js';
 import { money as M } from './index.js';
+import { openExternal } from './ui-external.js';
 
 // modal showing the formatted text invoice with a WhatsApp button (used by other screens too)
 export async function showInvoice(app, idOrNo) {
@@ -99,16 +100,7 @@ export async function renderInvoices(app, params = {}) {
       }));
     }
     let ts; $('#ps').addEventListener('input', () => { clearTimeout(ts); ts = setTimeout(suggest, 120); });
-    $('#ext').onclick = () => openModal({
-      title: 'منتج خارجي (حسب الطلب)',
-      html: `<input id="en" class="inp" placeholder="اسم المنتج"><div class="row"><input id="ec" class="inp" inputmode="decimal" placeholder="سعر الشراء"><input id="ep" class="inp" inputmode="decimal" placeholder="سعر البيع"></div><input id="eq" class="inp" inputmode="decimal" value="1"><div class="err" id="eerr"></div>`,
-      buttons: [{ label: 'إلغاء' }, { label: 'إضافة', cls: 'gold', onClick: (close, m) => {
-        const name = m.querySelector('#en').value.trim(), cost = m.querySelector('#ec').value || '0', pr = m.querySelector('#ep').value, q = m.querySelector('#eq').value || '1';
-        try { M.parsePrice(cost); M.parsePrice(pr); M.parseQty(q); if (!name) throw Object.assign(new Error(), { code: 'NAME_REQUIRED' }); }
-        catch (e) { m.querySelector('#eerr').textContent = errText(e); return false; }
-        lines.push({ kind: 'ext', name, qty: q, price: pr, cost }); draw();
-      } }], onOpen: (m) => m.querySelector('#en').focus(),
-    });
+    $('#ext').onclick = () => openExternal(app, (v) => { lines.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); });
 
     const payload = (extra = {}) => ({ invoice: d.invoice.id, ...extra,
       lines: lines.map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });

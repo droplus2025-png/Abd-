@@ -31,10 +31,11 @@ export function openModal({ title, html = '', buttons = [], tall = false, onOpen
   const m = document.createElement('div');
   m.className = 'modal';
   m.innerHTML = `<div class="sheet ${tall ? 'tall' : ''}">${title ? `<h3>${esc(title)}</h3>` : ''}<div class="mbody">${html}</div>
-    <div class="row mbtns">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-i="${i}" style="flex:1">${esc(b.label)}</button>`).join('')}</div></div>`;
+    <div class="row mbtns">${buttons.map((b, i) => (b.row2 ? '' : `<button class="btn ${b.cls || ''}" data-i="${i}" style="flex:1">${esc(b.label)}</button>`)).join('')}</div>
+    ${buttons.some((b) => b.row2) ? `<div class="row mbtns2">${buttons.map((b, i) => (b.row2 ? `<button class="btn ${b.cls || ''}" data-i="${i}" style="flex:1">${esc(b.label)}</button>` : '')).join('')}</div>` : ''}</div>`;
   document.body.appendChild(m);
   const close = () => m.remove();
-  m.querySelectorAll('.mbtns button').forEach((btn) => btn.addEventListener('click', async () => {
+  m.querySelectorAll('.mbtns button, .mbtns2 button').forEach((btn) => btn.addEventListener('click', async () => {
     const r = await buttons[Number(btn.dataset.i)].onClick?.(close, m);
     if (r !== false) close();
   }));

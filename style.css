@@ -70,7 +70,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .res .p{color:var(--lime);font-weight:700}
 .res .q{color:var(--muted);font-size:.85rem}
 .cart{display:flex;flex-direction:column;gap:8px;overflow:auto;flex:1;min-height:0}
-.line{display:grid;grid-template-columns:1fr 78px 64px 36px;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 8px}
+.line{display:grid;grid-template-columns:1fr 92px 80px 36px;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 8px}
 .line .nm{font-weight:700;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .line .inp{padding:8px 6px;text-align:center;font-size:1rem;border-radius:10px}
 .line .x{background:none;color:var(--red);font-size:1.3rem}
@@ -173,3 +173,30 @@ select.inp{appearance:auto}
 .line.ext{border-color:var(--rose-d)}.line.ext .nm{color:var(--rose)}
 .btn.rose{background:linear-gradient(#ffb1bf,var(--rose-d));color:#3a0615;border:0}
 @media (min-width:900px){ .saletop{grid-column:1/-1} .cell{min-height:64px;font-size:1.2rem} .cell.quickc .v{font-size:1.9rem} }
+
+/* normal-sale cell shows the total; pay button takes the quick box's place */
+.cell.normal{display:flex;justify-content:space-between;align-items:center}
+.cell.normal .v{font-size:1.5rem;font-weight:900}
+.cell.pay{background:linear-gradient(#34d3be,#14907f);color:#032a25;font-size:1.35rem;font-weight:900}
+.cell.pay:disabled{opacity:.5}
+.btn.green{background:linear-gradient(#3ddc84,#16a34a);color:#04260f;border:0}
+.mbtns2{margin-top:-2px}
+
+/* search result: [Sku - product] [V:sale] [A<purchase> Q<qty>] - colours tell the figures apart */
+.res.rs{grid-template-columns:1fr auto auto;gap:10px;align-items:center}
+.rs .rn{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.rs .rv{color:#ffd966;font-weight:800}
+.rs .rc{font-size:.72rem;opacity:.95;direction:ltr;white-space:nowrap}
+.rs .ra{color:#ff9f43}.rs .rq{color:#5ad1ff}.rs .rq.neg{color:var(--red)}
+.res.rs.exact{background:#0e4a2b;border-inline-start:4px solid var(--green)}
+.res.rs.exact .rn,.res.rs.exact .sku{color:#7dffb0}
+
+/* cart fields show their meaning: P: price, Q: quantity */
+.pf{display:flex;align-items:center;gap:3px;background:var(--panel2);border:2px solid var(--line);border-radius:10px;padding:0 7px;min-width:0}
+.pf b{color:var(--muted);font-size:.8rem}
+.pf input{background:none;border:0;color:var(--text);font:inherit;font-weight:700;width:100%;min-width:0;padding:9px 0;text-align:center;outline:none}
+.pf:focus-within{border-color:#4b8bff}
+.line.ext .pf{border-color:var(--rose-d)}
+@media (min-width:900px){ .line{grid-template-columns:1fr 130px 110px 44px} .cell.normal .v{font-size:1.9rem} .cell.pay{font-size:1.6rem} }
+/* keep "P:" "Q:" "V:" readable in right-to-left text */
+.pf b,.rs .rv{direction:ltr;unicode-bidi:isolate}
