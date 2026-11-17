@@ -524,3 +524,21 @@ test('settings: sale_beep defaults to on and the owner can switch it off', async
   await w.owner.settings.set('sale_beep', false);
   assert.equal((await w.owner.settings.get()).sale_beep, false);
 });
+
+test('reset stock: owner only, refused while invoices use products, frees the SKUs for a clean Excel re-import', async () => {
+  const w = await world();
+  await w.owner.products.create({ name: 'Marteau', purchasePrice: '30', salePrice: '40', qty: '5' });
+  await w.owner.products.create({ name: 'Clou', purchasePrice: '1', salePrice: '2', qty: '100' });
+  await rejects(w.emp.admin.resetStock(), 'PERMISSION_DENIED');
+  const p = (await w.owner.products.search('', 10))[0];
+  await w.owner.sale({ paid: '40', lines: [{ productId: p.id, qty: '1', price: '40' }] });
+  await rejects(w.owner.admin.resetStock(), 'STOCK_HAS_HISTORY');
+  await w.owner.admin.resetOperations();
+  const r = await w.owner.admin.resetStock();
+  assert.equal(r.products_removed, 2);
+  assert.equal((await w.owner.products.search('', 10)).length, 0);
+  const imp = await w.owner.products.import([{ sku: '1', name: 'Marteau', purchasePrice: '30', salePrice: '40', qty: '5' }, { sku: '2', name: 'Clou', purchasePrice: '1', salePrice: '2', qty: '100' }]);
+  assert.equal(imp.created, 2); assert.equal(imp.skipped.length, 0);
+  const again = await w.owner.products.search('', 10);
+  assert.deepEqual(again.map((x) => x.sku).sort(), [1, 2]);
+});

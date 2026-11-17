@@ -27,6 +27,18 @@ export function adminApi(ctx) {
       await store.replaceAll(file.state);
       return v.counts;
     },
+    // owner: empties the whole stock (products, quantities, prices history) and frees the SKU numbers, so a list kept in Excel
+    // can be imported again with the same numbers. Refused while invoices still point to products (reset the operations first).
+    async resetStock() {
+      ctx.access.requireOwner();
+      return store.transaction(async (tx) => {
+        if ((await tx.all('invoice_lines')).some((l) => l.product_id)) fail('STOCK_HAS_HISTORY', 'توجد فواتير مرتبطة بالمنتجات: صفّر العمليات أولاً');
+        const n = (await tx.find('products', (p) => !p.deleted_at)).length;
+        for (const t of ['stock_movements', 'price_history', 'products', 'sku_registry']) await tx.deleteAll(t);
+        await audit(ctx, tx, 'reset', 'stock', null, null, { products_removed: n });
+        return { products_removed: n };
+      }, { allowReset: true });
+    },
     async resetOperations() {
       ctx.access.requireOwner();
       return store.transaction(async (tx) => {

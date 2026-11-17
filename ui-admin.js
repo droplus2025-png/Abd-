@@ -86,7 +86,8 @@ export async function renderAdmin(app) {
       <div class="card"><div class="grp" style="margin-top:0">الحساب والبرنامج</div>
         <button class="btn" id="chCode" style="width:100%">تغيير كلمة مرور المالك</button>
         <div class="kv"><span>إصدار البرنامج</span><b>${APP_VERSION}</b></div>
-        <button class="btn red" id="reset" style="margin-top:8px;width:100%">تصفير العمليات (للتجارب) — يُبقي المنتجات والمخزون</button></div>`;
+        <button class="btn red" id="reset" style="margin-top:8px;width:100%">تصفير العمليات (للتجارب) — يُبقي المنتجات والمخزون</button>
+        <button class="btn red" id="resetStock" style="margin-top:8px;width:100%">تصفير المخزون — يحذف كل المنتجات لإعادة استيرادها من Excel</button></div>`;
 
     // ---- invoice template editor with live preview
     const readTpl = () => {
@@ -195,6 +196,24 @@ export async function renderAdmin(app) {
       await auth.setEmployeeActive(S, b.dataset.act, b.dataset.on !== '1'); draw();
     }));
     document.querySelectorAll('[data-perm]').forEach((b) => b.addEventListener('click', () => permissions(b.dataset.perm)));
+    // empty the stock: a backup file is saved first, then the word "تصفير" must be typed
+    $('#resetStock').onclick = async () => {
+      let n = 0; try { n = (await eng.products.search('', 100000)).length; } catch { /* count only */ }
+      openModal({ title: 'تصفير المخزون',
+        html: `<div class="err" style="margin-bottom:8px">سيُحذف ${n ? `<b>${n}</b> ` : ''}منتج بكل كمياتها وأسعارها، وتُحرَّر أرقام المنتجات. لا يمكن التراجع إلا بالنسخة الاحتياطية التي تُحفظ تلقائياً الآن.</div>
+          <div class="muted" style="font-size:.85rem">يتطلب عدم وجود فواتير (استعمل «تصفير العمليات» أولاً). بعده: المخزون ← لصق من Excel.</div>
+          <div class="lbl">اكتب كلمة «تصفير» للتأكيد</div><input id="w" class="inp" autocomplete="off"><div class="err" id="err"></div>`,
+        buttons: [{ label: 'إلغاء' }, { label: 'حفظ نسخة ثم تصفير', cls: 'red', onClick: async (close, m) => {
+          if (m.querySelector('#w').value.trim() !== 'تصفير') { m.querySelector('#err').textContent = 'اكتب الكلمة كما هي'; return false; }
+          try {
+            const f = await makeFile(), a = document.createElement('a');                       // safety copy first
+            a.href = URL.createObjectURL(f); a.download = `avant-reset-stock-${f.name}`; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            const r = await eng.admin.resetStock(); toast(`تم تصفير المخزون · حُذف ${r.products_removed} منتج`, false, 3500); draw();
+          } catch (e) { m.querySelector('#err').textContent = errText(e); return false; }
+        } }],
+        onOpen: (m) => m.querySelector('#w').focus() });
+    };
     $('#reset').onclick = async () => {
       if (!(await confirmBox('تصفير العمليات', 'ستُحذف كل الفواتير والزبناء والموردين والصندوق. تبقى المنتجات والمخزون. متابعة؟', 'تصفير', 'إلغاء'))) return;
       try { const r = await eng.admin.resetOperations(); toast(`تم التصفير · ${r.products_kept} منتج محفوظ`); draw(); } catch (e) { toast(errText(e), true); }
