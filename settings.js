@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS = {
   currency: 'DH', wa_country_code: '212', timezone: 'Africa/Casablanca',
   quick_sale_profit_pct: 20,                                  // % of a quick sale counted as profit
   low_stock_threshold: 5,
+  sale_beep: true,                                            // sale screen: bip on every button, double bip on pay
   invoice_template: {
     separator: '━━━━━━━━━━━━━━', show_phone: true, show_address: true, show_customer: true, bold_total: true,
     line_format: '{n}. {name}\n   {qty}×{price}  {total}',

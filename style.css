@@ -235,3 +235,81 @@ body.kb .results,body.kb #main .results{max-height:none}
 .sdot.offline{background:#7c8aa8}.sdot.error,.sdot.badcode{background:#e5484d}
 .sdot.pend{min-width:16px;height:16px;line-height:16px;font-size:.7rem;border-radius:9px}
 @keyframes sp{50%{opacity:.35}}
+
+/* ===== v1.2 : sale screen = the three reference sketches =====
+   quick : customer / keypad / [pay|total] / [external|search] / stock list
+   normal: customer / [external|search] / cart / [pay|total] / stock list     (cart + list always left to right) */
+.sale2{display:flex;flex-direction:column;gap:7px;flex:1;min-height:0;padding:8px}
+.sale2 .colA,.sale2 .colB{display:contents}
+.sale2.q #cust{order:1} .sale2.q #kpad{order:2} .sale2.q #paybar{order:3} .sale2.q #srow{order:4} .sale2.q #list{order:5}
+.sale2.n #cust{order:1} .sale2.n #srow{order:2} .sale2.n #cartwrap{order:3} .sale2.n #paybar{order:4} .sale2.n #list{order:5}
+.sale2.q #cartwrap,.sale2.n #kpad,.sale2.n.empty #cartwrap,.sale2.n.empty #paybar{display:none}
+.sale2.q #toQuick,.sale2.n:not(.empty) #toQuick{display:none}
+
+/* customer (optional): name at the right, phone at the left */
+.s-cust{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0}
+.s-in{width:100%;min-width:0;background:#dff3e6;color:#0b2a1a;border:2px solid #7fc79b;border-radius:12px;padding:10px 10px;font-size:.95rem;font-weight:600;outline:none}
+.s-in::placeholder{color:#4d7a60;font-weight:500}
+.s-in:focus{border-color:#22c55e;box-shadow:0 0 12px #22c55e66}
+.s-sg{position:absolute;top:calc(100% + 4px);inset-inline:0;z-index:30}
+.s-sg .results{max-height:40vh;box-shadow:0 8px 24px #000a}
+
+/* keypad: 1 2 3 4 / 5 6 7 8 / 9 0 . <x  (left to right, like the sketch) */
+.s-kpad{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:clamp(46px,8.2vh,66px);gap:6px;direction:ltr;flex-shrink:0}
+.s-kpad .key{font-size:1.55rem;border-radius:12px;min-height:0;padding:0}
+
+/* pay (right) | total (left) */
+.s-pay{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0}
+.s-paybtn{min-height:54px;border-radius:14px;background:linear-gradient(#34d3be,#14907f);color:#032a25;font-size:1.4rem;font-weight:900}
+.s-paybtn:disabled{opacity:.45}
+.s-paybtn:active:not(:disabled){transform:translateY(2px)}
+.s-tot{display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;background:var(--panel2);border:2px solid var(--line);border-radius:14px;padding:0 8px;overflow:hidden}
+.s-tot .l{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.s-tot b{font-size:1.5rem;font-weight:900;color:var(--gold);direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+
+/* external product (right) | search (left) | back-to-quick key (far left, only with an empty cart) */
+.s-srow{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;flex-shrink:0}
+.s-ext{min-height:48px;border-radius:12px;background:linear-gradient(#ffb1bf,var(--rose-d));color:#3a0615;font-weight:800;font-size:.98rem;padding:0 6px}
+.s-srch{min-width:0;width:100%;min-height:48px;border-radius:12px;background:var(--green-d);border:2px solid var(--green);color:#eafff3;padding:0 12px;font-size:1rem;font-weight:600;outline:none;text-align:right}
+.s-srch::placeholder{color:#74d6a0}
+.s-srch:focus{box-shadow:0 0 14px #22c55e88}
+.s-toq{min-width:50px;min-height:48px;border-radius:12px;background:linear-gradient(#ffd966,#e3a622);color:var(--ink);font-size:1.3rem;font-weight:800}
+
+/* cart: [Sku- product] [p=] [Q=] [X], left to right */
+.s-cart{display:flex;flex-direction:column;gap:5px;overflow:auto;flex:0 1 auto;max-height:min(36vh,270px);min-height:0;direction:ltr}
+.sline{display:grid;grid-template-columns:1fr 88px 78px 38px;gap:5px;align-items:center;background:var(--panel);border:1px solid #1f6b46;border-radius:10px;padding:4px 6px;flex-shrink:0}
+.sline .nm{font-weight:700;font-size:.95rem;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;text-align:left}
+.sline .nm .sku{color:var(--gold)}
+.sline .pf{padding:0 6px}.sline .pf b{font-size:.78rem;font-weight:700}
+.sline .pf input{font-size:1.05rem;font-weight:800;padding:7px 0}
+.sline .x{background:none;color:var(--red);font-size:1.2rem;min-width:38px;min-height:38px}
+.sline.ext{border-color:var(--rose-d)}.sline.ext .nm{color:var(--rose)}.sline.ext .pf{border-color:var(--rose-d)}
+
+/* stock list: [Sku- product] [price] [A<purchase>Q<qty>], left to right */
+.s-list{flex:1;min-height:110px;overflow:auto;direction:ltr;background:var(--panel2);border:2px solid #1f7a4a;border-radius:12px}
+.s-list .res.rs{direction:ltr;text-align:left;grid-template-columns:1fr auto auto;padding:9px 10px;gap:8px}
+.s-list .rn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;white-space:normal}
+.s-list .rv{font-size:.98rem}
+.s-list .rc{display:flex;gap:2px;font-size:.8rem;font-weight:700;min-width:62px;justify-content:flex-end}
+.s-none{padding:16px;text-align:center}
+
+/* keyboard open (phone): the customer row steps aside unless it is being typed in; everything stays compact */
+body.kb .sale2{gap:5px;padding:5px}
+body.kb .sale2 #cust:not(:focus-within){display:none}
+body.kb .s-cart{max-height:26vh}
+body.kb .s-kpad{grid-auto-rows:42px}
+body.kb .s-paybtn,body.kb .s-tot{min-height:44px}
+body.kb .s-ext,body.kb .s-srch,body.kb .s-toq{min-height:42px}
+
+/* touch-screen computer: cart / keypad at the right, search + stock list at the left */
+@media (min-width:900px){
+  .sale2{display:grid;grid-template-columns:1fr 1.15fr;gap:16px;padding:16px}
+  .sale2 .colA,.sale2 .colB{display:flex;flex-direction:column;gap:10px;min-height:0}
+  .sale2.q #kpad{flex:1;grid-auto-rows:1fr}
+  .sale2.n #cartwrap{flex:1;max-height:none}
+  .s-in,.s-srch,.s-ext{min-height:58px;font-size:1.15rem}
+  .s-paybtn,.s-tot{min-height:70px}.s-paybtn{font-size:1.8rem}.s-tot b{font-size:2rem}
+  .s-kpad .key{font-size:2.1rem}
+  .sline{grid-template-columns:1fr 130px 110px 44px;padding:8px 10px}.sline .pf input{font-size:1.2rem}
+  .s-list .res.rs{padding:15px 12px;font-size:1.05rem}
+}

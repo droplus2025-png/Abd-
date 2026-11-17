@@ -42,6 +42,7 @@ export async function renderAdmin(app) {
       <div class="card"><div class="grp" style="margin-top:0">إعدادات المحل</div>
         ${[['store_name', 'اسم المحل'], ['store_phone', 'هاتف المحل'], ['store_address', 'العنوان'], ['thanks_text', 'عبارة الشكر'], ['currency', 'العملة (مثل DH)'], ['quick_sale_profit_pct', 'نسبة الربح في البيع السريع %']]
           .map(([k, l]) => `<div class="lbl">${l}</div><input class="inp cfg" data-k="${k}" value="${esc(c[k])}" ${k === 'quick_sale_profit_pct' ? 'inputmode="decimal"' : ''}>`).join('')}
+        <label class="sw"><span>🔊 صوت أزرار شاشة البيع (بيب، وبيبان عند الدفع)</span><input type="checkbox" id="cfgBeep" ${c.sale_beep !== false ? 'checked' : ''}></label>
         <button class="btn gold" id="saveCfg" style="margin-top:8px;width:100%">حفظ الإعدادات</button></div>
 
       <div class="card"><div class="grp" style="margin-top:0">الموظفون</div>
@@ -149,6 +150,8 @@ export async function renderAdmin(app) {
           if (k === 'quick_sale_profit_pct') val = Number(String(val).replace(',', '.'));
           if (val !== c[k]) await eng.settings.set(k, val);
         }
+        const beepOn = $('#cfgBeep').checked;
+        if (beepOn !== (c.sale_beep !== false)) await eng.settings.set('sale_beep', beepOn);
         await app.refreshCfg(); toast('تم حفظ الإعدادات');
       } catch (e) { toast(errText(e), true, 3000); }
     };

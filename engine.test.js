@@ -508,3 +508,19 @@ test('stock: owner edits quantity / prices / SKU, journaled; CSV export', async 
   assert.equal(again.created, 0); assert.equal(again.skipped.length, 2);                                // the exported file re-imports without duplicates
   assert.deepEqual(await w.owner.reports.integrityCheck(), []);
 });
+
+test('quick sale: optional customer from the sale screen is attached; no customer = unchanged', async () => {
+  const w = await world();
+  const a = await w.emp.quickSale('25');
+  assert.equal(a.invoice.customer_id, null);
+  const b = await w.emp.quickSale('30', { name: 'Ali', phone: '0661234567' });
+  assert.ok(b.invoice.customer_id);
+  assert.equal(b.invoice.credit_amount, 0);
+  assert.equal(b.invoice.total, 3000);
+});
+test('settings: sale_beep defaults to on and the owner can switch it off', async () => {
+  const w = await world();
+  assert.equal((await w.owner.settings.get()).sale_beep, true);
+  await w.owner.settings.set('sale_beep', false);
+  assert.equal((await w.owner.settings.get()).sale_beep, false);
+});

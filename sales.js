@@ -68,7 +68,7 @@ export function salesApi(ctx) {
 
     // keypad sale: only an amount. Nothing is deducted from the till; the whole price is added.
     // Only the configured % (Administration) counts as profit in the reports.
-    async quickSale(amount) {
+    async quickSale(amount, customer) {
       ctx.access.require('quick_sale');
       return store.transaction(async (tx) => {
         const total = parseMoney(amount, 'amount');
@@ -78,8 +78,10 @@ export function salesApi(ctx) {
         const price4 = total * 100;
         const cost4 = quickCost4(price4, pctH);
         const costTotal = lineCents(1000, cost4);
+        // optional customer (name + phone typed on the sale screen): only for the archive, a quick sale is always paid in full
+        const cust = customer && customer.name && customer.phone ? await findOrCreateParty(ctx, tx, 'customers', customer) : null;
         return postInvoice(ctx, tx, {
-          type: 'quick_sale', total, paid: total, credit_amount: 0, cash_effect: total,
+          type: 'quick_sale', customer_id: cust?.id, total, paid: total, credit_amount: 0, cash_effect: total,
           cost_total: costTotal, profit: total - costTotal, profit_pct_applied: pctH / 100,
           lines: [{ kind: 'quick', name: 'بيع سريع', qty: 1000, unit_price: price4, unit_cost: cost4 }],
         });
