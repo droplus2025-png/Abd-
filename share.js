@@ -17,7 +17,8 @@ export function shareApi(ctx) {
         if (!inv) fail('INVOICE_NOT_FOUND', 'Invoice not found');
         const detail = inv.type === 'quick_sale' ? (await tx.find('invoices', d => d.type === 'quick_detail' && d.parent_invoice_id === inv.id))[0] : null;
         const lines = (await tx.find('invoice_lines', l => l.invoice_id === (detail || inv).id)).sort((a, b) => a.line_no - b.line_no);
-        const party = inv.customer_id ? await tx.get('customers', inv.customer_id) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
+        const custId = inv.customer_id || detail?.customer_id;
+        const party = custId ? await tx.get('customers', custId) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
         const parent = inv.parent_invoice_id ? await tx.get('invoices', inv.parent_invoice_id) : null;
         const text = renderInvoice({ invoice: inv, lines, party, parentNo: parent?.invoice_no, settings: s });
         return { text, link: party ? waLink(party.phone_norm, text) : null, invoice_id: inv.id };

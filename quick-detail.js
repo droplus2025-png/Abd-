@@ -8,8 +8,9 @@
 import { fail } from './errors.js';
 import { parseQty, parsePrice, lineCents } from './money.js';
 import { postInvoice } from './post.js';
+import { findOrCreateParty } from './parties.js';
 
-// input: { invoice, lines:[{productId, qty, price?} | {external:{name,cost,price,qty}}], allowBelowCost? }
+// input: { invoice, lines:[{productId, qty, price?} | {external:{name,cost,price,qty}}], allowBelowCost?, customer?:{name,phone} (optional) }
 async function build(ctx, tx, input) {
   const parent = (await tx.find('invoices', (i) => i.id === input.invoice || i.invoice_no === input.invoice))[0];
   if (!parent) fail('INVOICE_NOT_FOUND', 'Invoice not found');
@@ -73,8 +74,11 @@ export function quickDetailApi(ctx) {
           if (!input.allowBelowCost) fail('BELOW_COST', 'Selling below cost: confirm to continue', { items: b.below });
           warnings.push({ type: 'BELOW_COST', items: b.below });
         }
+        // optional customer typed while detailing: stored on the detail record (a quick sale is paid in full: no debt)
+        const c = input.customer && (input.customer.name || input.customer.phone) && !b.parent.customer_id
+          ? await findOrCreateParty(ctx, tx, 'customers', input.customer) : null;
         const res = await postInvoice(ctx, tx, {
-          type: 'quick_detail', invoice_no: `${b.parent.invoice_no}-D`, parent_invoice_id: b.parent.id,
+          type: 'quick_detail', customer_id: c?.id, invoice_no: `${b.parent.invoice_no}-D`, parent_invoice_id: b.parent.id,
           total: b.parent.total, paid: b.parent.total, credit_amount: 0,
           cash_effect: -b.externalCost,                         // an external item's cost leaves the till (as in a normal sale)
           cost_total: b.costTotal, profit: b.realProfit - b.parent.profit,        // the flat % is cancelled

@@ -542,3 +542,22 @@ test('reset stock: owner only, refused while invoices use products, frees the SK
   const again = await w.owner.products.search('', 10);
   assert.deepEqual(again.map((x) => x.sku).sort(), [1, 2]);
 });
+
+test('quick sale details: optional customer typed with the details (sync-safe: stored on the detail record)', async () => {
+  const w = await world();
+  await w.owner.products.create({ name: 'Marteau', purchasePrice: '30', salePrice: '40', qty: '5' });
+  const p = (await w.owner.products.search('', 5))[0];
+  const q1 = await w.emp.quickSale('40');
+  const d1 = await w.emp.detailQuickSale({ invoice: q1.invoice.id, lines: [{ productId: p.id, qty: '1', price: '40' }], customer: { name: 'Ali', phone: '0661234567' } });
+  const inv = await w.owner.reports.invoice(q1.invoice.id);
+  assert.equal(inv.party.name, 'Ali');
+  assert.equal(inv.invoice.credit_amount, 0);
+  assert.equal((await w.owner.reports.invoices({ customerId: inv.party.id })).length, 1);
+  assert.equal((await w.owner.reports.partyStatement({ customer_id: inv.party.id })).length, 1);
+  assert.equal((await w.owner.share.invoiceMessage(q1.invoice.id)).link.includes('661234567'), true);
+  // no customer = as before; half-filled customer is refused
+  const q2 = await w.emp.quickSale('40');
+  await rejects(w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: p.id, qty: '1', price: '40' }], customer: { name: 'Omar', phone: '' } }), 'PHONE_REQUIRED');
+  await w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: p.id, qty: '1', price: '40' }] });
+  assert.equal((await w.owner.reports.invoice(q2.invoice.id)).party, null);
+});

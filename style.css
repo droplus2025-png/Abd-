@@ -325,3 +325,7 @@ body.kb .s-ext,body.kb .s-srch,body.kb .s-toq{min-height:42px}
 .det2 .err:empty{display:none}
 .s-send{background:linear-gradient(#5b8dff,#2a54c8);color:#fff}
 .sline .lt{display:block;font-size:.75rem;color:var(--muted);font-weight:600}
+.s-info{position:relative}
+.s-info .s-sg{position:absolute;top:calc(100% + 4px);inset-inline:0;z-index:30}
+.s-mini{width:100%;min-width:0;background:#dff3e6;color:#0b2a1a;border:1px solid #7fc79b;border-radius:8px;padding:5px 6px;font-size:.85rem;font-weight:700;text-align:center;outline:none}
+.s-mini:focus{border-color:#22c55e}

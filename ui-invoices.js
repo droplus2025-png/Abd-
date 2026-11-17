@@ -1,5 +1,5 @@
 // Invoices archive: search, filters, detail, WhatsApp, and product details for quick sales.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen, priceShort } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen, priceShort, partySuggest } from './ui-core.js';
 import { money as M } from './index.js';
 import { openExternal } from './ui-external.js';
 
@@ -92,11 +92,12 @@ export async function renderInvoices(app, params = {}) {
     let lines = [], timer, last = null, query = '', rows = [];   // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
     $('#main').innerHTML = `
       <div class="det2">
-        <div class="s-info">
-          <div><span class="l">زبون</span><b>${d.party ? esc(d.party.name) : '—'}</b></div>
-          <div><span class="l">هاتف</span><b dir="ltr">${d.party ? esc(d.party.phone) : '—'}</b></div>
+        <div class="s-info" id="info">
+          <div><span class="l">زبون</span>${d.party ? `<b>${esc(d.party.name)}</b>` : '<input id="dcn" class="s-mini" placeholder="اختياري" autocomplete="off">'}</div>
+          <div><span class="l">هاتف</span>${d.party ? `<b dir="ltr">${esc(d.party.phone)}</b>` : '<input id="dcp" class="s-mini" inputmode="tel" placeholder="اختياري" autocomplete="off" dir="ltr">'}</div>
           <div><span class="l">الفرق</span><b id="diff" dir="ltr">${money(total)}</b></div>
           <div><span class="l">الإجمالي</span><b dir="ltr" style="color:var(--gold)">${money(total)}</b></div>
+          <div id="dsg" class="s-sg"></div>
         </div>
         <div class="s-srow"><button class="s-ext" id="ext">🔦 منتج خارجي</button><input id="ps" class="s-srch" placeholder="🔍 بحث" autocomplete="off"></div>
         <div class="s-cart" id="dl"></div>
@@ -105,6 +106,12 @@ export async function renderInvoices(app, params = {}) {
         <div class="s-list" id="dsl"></div>
       </div>`;
     const dl = $('#dl'), dsl = $('#dsl'), ps = $('#ps');
+    const dcn = $('#dcn'), dcp = $('#dcp');                    // optional customer (only when the sale has none yet)
+    if (dcn) {
+      partySuggest(app, 'customer', dcn, dcp, $('#dsg'));
+      dcn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dcp.focus(); } });
+      dcp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ps.focus(); } });
+    }
 
     function renderStock() {
       const q = query.toLowerCase();
@@ -177,8 +184,10 @@ export async function renderInvoices(app, params = {}) {
     }
     async function save(send, allowBelowCost = false) {
       setSave(false);
+      const cname = dcn ? dcn.value.trim() : '', cphone = dcp ? dcp.value.trim() : '';
+      if (!!cname !== !!cphone) { $('#derr').textContent = cname ? 'أدخل هاتف الزبون أيضاً، أو امسح الاسم' : 'أدخل اسم الزبون أيضاً، أو امسح الهاتف'; setSave(true); return; }
       try {
-        await eng.detailQuickSale(payload({ allowBelowCost })); toast('تمت إضافة التفاصيل');
+        await eng.detailQuickSale(payload({ allowBelowCost, customer: cname ? { name: cname, phone: cphone } : undefined })); toast('تمت إضافة التفاصيل');
         if (send) {                                          // save and send: the invoice goes to WhatsApp right away
           const msg = await eng.share.invoiceMessage(inv.invoice_no).catch(() => null);
           if (msg) {

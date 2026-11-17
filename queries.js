@@ -34,6 +34,11 @@ export async function integrityProblems(tx) {
   return problems;
 }
 
+// parent quick-sale id -> customer typed when its details were added
+export async function detailCustomers(tx) {
+  return new Map((await tx.find('invoices', d => d.type === 'quick_detail' && d.customer_id)).map(d => [d.parent_invoice_id, d.customer_id]));
+}
+
 export function queriesApi(ctx) {
   const { store } = ctx;
   // reading invoices is needed by sales, returns, debts and the details of quick sales: any of these rights is enough
@@ -67,7 +72,8 @@ export function queriesApi(ctx) {
     async invoices({ type, customerId, supplierId, limit = 200 } = {}) {
       seeInvoices();
       return store.transaction(async (tx) => {
-        let rows = await tx.find('invoices', i => i.type !== 'quick_detail' && (!type || i.type === type) && (!customerId || i.customer_id === customerId) && (!supplierId || i.supplier_id === supplierId));
+        const dc = await detailCustomers(tx);
+        let rows = await tx.find('invoices', i => i.type !== 'quick_detail' && (!type || i.type === type) && (!customerId || (i.customer_id || dc.get(i.id)) === customerId) && (!supplierId || i.supplier_id === supplierId));
         rows = rows.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
         const detailed = await detailedSet(tx);
         return rows.map(i => ({ ...strip(ctx, i), has_detail: detailed.has(i.id) }));
@@ -82,9 +88,9 @@ export function queriesApi(ctx) {
       return store.transaction(async (tx) => {
         const parties = new Map([...(await tx.all('customers')), ...(await tx.all('suppliers'))].map(p => [p.id, p]));
         const rows = [];
-        const detailed = await detailedSet(tx);
+        const detailed = await detailedSet(tx), dc = await detailCustomers(tx);
         for (const i of (await tx.find('invoices', x => x.type !== 'quick_detail' && (!types || types.includes(x.type)))).sort((a, b) => b.created_at.localeCompare(a.created_at))) {
-          const p = parties.get(i.customer_id || i.supplier_id);
+          const p = parties.get(i.customer_id || dc.get(i.id) || i.supplier_id);
           const hit = !t || i.invoice_no.includes(t) || (p && (p.name.toLowerCase().includes(t) || nums.some((n) => p.phone_norm.includes(n))));
           if (hit) rows.push({ ...strip(ctx, i), party_name: p?.name ?? null, party_phone: p?.phone ?? null, has_detail: detailed.has(i.id) });
           if (rows.length >= limit) break;
@@ -104,7 +110,8 @@ export function queriesApi(ctx) {
         const remaining = await remainingDebt(tx, inv);
         const allLines = await tx.all('invoice_lines');
         const returned = (id) => allLines.filter(x => x.origin_line_id === id).reduce((a, x) => a + x.qty, 0);   // already returned quantity
-        const party = inv.customer_id ? await tx.get('customers', inv.customer_id) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
+        const custId = inv.customer_id || detail?.customer_id;
+        const party = custId ? await tx.get('customers', custId) : inv.supplier_id ? await tx.get('suppliers', inv.supplier_id) : null;
         return { invoice: strip(ctx, inv), has_detail: !!detail, quick_pending: inv.type === 'quick_sale' && !detail, real_profit: detail ? inv.profit + detail.profit : null, party, lines: lines.map(l => ({ ...stripLine(ctx, l), returned: returned(l.id) })), returns: returns.map(r => strip(ctx, r)), remaining };
       });
     },
@@ -123,7 +130,8 @@ export function queriesApi(ctx) {
     async partyStatement({ customer_id, supplier_id }) {
       seeInvoices();
       return store.transaction(async (tx) => {
-        const rows = (await tx.find('invoices', i => (customer_id ? i.customer_id === customer_id : i.supplier_id === supplier_id)))
+        const dc = await detailCustomers(tx);
+        const rows = (await tx.find('invoices', i => i.type !== 'quick_detail' && (customer_id ? (i.customer_id || dc.get(i.id)) === customer_id : i.supplier_id === supplier_id)))
           .sort((a, b) => b.created_at.localeCompare(a.created_at));
         const out = [];
         for (const i of rows) out.push({ ...strip(ctx, i), remaining: await remainingDebt(tx, i) });
