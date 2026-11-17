@@ -1,5 +1,5 @@
 // Invoices archive: search, filters, detail, WhatsApp, and product details for quick sales.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen, priceShort } from './ui-core.js';
 import { money as M } from './index.js';
 import { openExternal } from './ui-external.js';
 
@@ -43,7 +43,14 @@ export async function renderInvoices(app, params = {}) {
           ${i.type === 'quick_sale' && !i.has_detail ? ' <span class="pill amber">بدون تفاصيل</span>' : ''}${i.is_modified ? ' <span class="pill">معدلة</span>' : ''}
           <br><span class="muted" style="font-size:.8rem">${fmtWhen(i.created_at)}</span></span>
         <span class="p">${money(i.total)}</span></button>`).join('')}</div>` : '<div class="muted" style="padding:14px">لا توجد فواتير</div>';
-    document.querySelectorAll('#main .res').forEach((b) => b.addEventListener('click', () => detail(b.dataset.id)));
+    document.querySelectorAll('#main .res').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.id, r = rows.find((x) => x.id === id);
+      if (r && r.type === 'quick_sale' && !r.has_detail && can.quick_sale) {            // an invoice waiting for its details: straight to the details screen
+        const d = await eng.reports.invoice(id);
+        if (d?.quick_pending) { clearTimeout(t); return editDetails(d, true); }
+      }
+      detail(id);
+    }));
   }
   let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(list, 150); });
   $('#chips').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; filter = b.dataset.k;
@@ -75,84 +82,122 @@ export async function renderInvoices(app, params = {}) {
 
   // ---------------------------------------------------------------- product details of a quick sale
   // Same freedom as a normal sale (product, external product, price, quantity). The WHOLE total must be distributed.
-  function editDetails(d) {
-    back = () => detail(d.invoice.id);
-    const total = d.invoice.total;
+  // Layout (sketch): [customer | phone | difference | total] / [external | search] / lines / [save | save and send] / stock list
+  function editDetails(d, direct = false) {
+    back = direct ? list : () => detail(d.invoice.id);
+    $('#q').style.display = 'none'; $('#chips').style.display = 'none';
+    const total = d.invoice.total, inv = d.invoice;
     const canPrice = !!can.edit_sale_price;                  // prices are those really charged; without the right to edit them the product's own price is used
-    let lines = [], timer, last = null;                      // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
+    const cur = String(app.cfg?.currency || '').toLowerCase();
+    let lines = [], timer, last = null, query = '', rows = [];   // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
     $('#main').innerHTML = `
-      <div class="card"><b style="color:var(--gold)">${d.invoice.invoice_no}</b> <span class="muted">· المبلغ المدفوع: <b style="color:var(--text)">${money(total)}</b></span>
-        <div class="muted" style="font-size:.82rem;margin-top:4px">أضف المنتجات المباعة فعلاً بأسعار بيعها الحقيقية، ويجب أن يساوي المجموع المبلغ المدفوع تماماً. وإلا فاترك الفاتورة بدون تفاصيل.</div></div>
-      <div class="row"><input id="ps" class="inp" placeholder="🔍 أضف منتجاً بالاسم أو الرقم" autocomplete="off" style="flex:1"><button class="btn rose" id="ext" style="flex:0 0 31%">🔦 منتج خارجي</button></div>
-      <div id="sug"></div><div id="dl" style="display:flex;flex-direction:column;gap:6px"></div>
-      <div id="sum" class="card"></div><div class="err" id="derr"></div>
-      <button class="btn teal big" id="save" disabled style="font-size:1.2rem">حفظ التفاصيل</button>`;
+      <div class="det2">
+        <div class="s-info">
+          <div><span class="l">زبون</span><b>${d.party ? esc(d.party.name) : '—'}</b></div>
+          <div><span class="l">هاتف</span><b dir="ltr">${d.party ? esc(d.party.phone) : '—'}</b></div>
+          <div><span class="l">الفرق</span><b id="diff" dir="ltr">${money(total)}</b></div>
+          <div><span class="l">الإجمالي</span><b dir="ltr" style="color:var(--gold)">${money(total)}</b></div>
+        </div>
+        <div class="s-srow"><button class="s-ext" id="ext">🔦 منتج خارجي</button><input id="ps" class="s-srch" placeholder="🔍 بحث" autocomplete="off"></div>
+        <div class="s-cart" id="dl"></div>
+        <div class="err" id="derr"></div><div id="sum" class="s-note"></div>
+        <div class="s-pay"><button class="s-paybtn" id="save" disabled>حفظ</button><button class="s-paybtn s-send" id="saveSend" disabled>حفظ وإرسال</button></div>
+        <div class="s-list" id="dsl"></div>
+      </div>`;
+    const dl = $('#dl'), dsl = $('#dsl'), ps = $('#ps');
 
-    async function suggest() {
-      const q = $('#ps').value.trim();
-      if (!q) { $('#sug').innerHTML = ''; return; }
-      const rows = await eng.products.search(q, 6);
-      $('#sug').innerHTML = `<div class="results">${rows.map((p) => `<button class="res" data-id="${p.id}"><span class="sku">${p.sku}</span><span>${esc(p.name)}</span><span class="muted">${price4(p.purchase_price)}</span><span class="p">${price4(p.sale_price)}</span></button>`).join('')}</div>`;
-      document.querySelectorAll('#sug .res').forEach((b) => b.addEventListener('click', () => {
-        const p = rows.find((r) => r.id === b.dataset.id), ex = lines.find((l) => l.id === p.id);
-        if (ex) ex.qty = String((Number(ex.qty) || 0) + 1); else lines.push({ kind: 'product', id: p.id, name: p.name, sku: p.sku, qty: '1', price: price4(p.sale_price) });
-        $('#ps').value = ''; $('#sug').innerHTML = ''; draw();
-      }));
+    function renderStock() {
+      const q = query.toLowerCase();
+      const exact = (p) => !!q && (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q);
+      dsl.innerHTML = rows.length ? rows.map((p) => `
+        <button class="res rs ${exact(p) ? 'exact' : ''}" data-id="${p.id}"><span class="rn"><b class="sku">${p.sku}</b>- ${esc(p.name)}</span>
+          <span class="rv">${priceShort(p.sale_price)}${esc(cur)}</span>
+          <span class="rc"><span class="ra">A${priceShort(p.purchase_price)}</span><span class="rq ${p.qty <= 0 ? 'neg' : ''}">Q${qtyStr(p.qty) || 0}</span></span></button>`).join('')
+        : '<div class="muted s-none">لا نتائج</div>';
     }
-    let ts; $('#ps').addEventListener('input', () => { clearTimeout(ts); ts = setTimeout(suggest, 120); });
-    $('#ext').onclick = () => openExternal(app, (v) => { lines.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); });
+    async function loadStock() { try { rows = await eng.products.search(query, 60); } catch { rows = []; } renderStock(); }
+    function addProduct(p) {
+      if (!p) return;
+      const ex = lines.find((l) => l.kind === 'product' && l.id === p.id);
+      if (ex) ex.qty = String((Number(ex.qty) || 0) + 1); else lines.push({ kind: 'product', id: p.id, name: p.name, sku: p.sku, qty: '1', price: price4(p.sale_price) });
+      draw(); dl.scrollTop = dl.scrollHeight;
+      if (document.activeElement === ps) ps.select(); else if (query) { query = ''; ps.value = ''; loadStock(); }
+    }
+    dsl.addEventListener('pointerdown', (e) => { if (e.target.closest('.res') && document.activeElement === ps) e.preventDefault(); });
+    dsl.addEventListener('click', (e) => { const b = e.target.closest('.res'); if (b) addProduct(rows.find((r) => r.id === b.dataset.id)); });
+    let ts; ps.addEventListener('input', () => { clearTimeout(ts); ts = setTimeout(() => { query = ps.value.trim(); loadStock(); }, 120); });
+    ps.addEventListener('focus', () => setTimeout(() => ps.select(), 0));
+    ps.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); clearTimeout(ts); query = ps.value.trim(); await loadStock();
+      const q = query.toLowerCase();
+      const hit = rows.find((p) => (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q)) || (rows.length === 1 ? rows[0] : null);
+      if (hit) addProduct(hit);
+    });
+    $('#ext').onclick = () => openExternal(app, (v) => { lines.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); dl.scrollTop = dl.scrollHeight; loadStock(); });
 
     const payload = (extra = {}) => ({ invoice: d.invoice.id, ...extra,
       lines: lines.map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });
 
+    // lines, left to right: [Sku- product] [p=price] [Q=quantity] [X]
     function draw() {
-      $('#dl').innerHTML = lines.map((l, k) => `<div class="line ${l.kind === 'ext' ? 'ext' : ''}" style="grid-template-columns:1fr 78px 64px 30px" data-k="${k}">
-        <div class="nm">${l.kind === 'product' ? `<span class="muted">${l.sku} · </span>` : '＋ '}${esc(l.name)}<br><span class="muted lt" style="font-size:.78rem"></span></div>
-        <input class="inp p" inputmode="decimal" value="${esc(l.price)}" ${canPrice ? '' : 'disabled'}><input class="inp n" inputmode="decimal" value="${esc(l.qty)}">
-        <button class="x">✖</button></div>`).join('');
-      document.querySelectorAll('#dl .line').forEach((row) => {
+      dl.innerHTML = lines.length ? lines.map((l, k) => `<div class="sline ${l.kind === 'ext' ? 'ext' : ''}" data-k="${k}">
+        <div class="nm">${l.kind === 'product' ? `<b class="sku">${l.sku}</b>- ` : '＋ '}${esc(l.name)}<span class="lt"></span></div>
+        <label class="pf"><b>p=</b><input class="p" inputmode="decimal" value="${esc(l.price)}" ${canPrice ? '' : 'disabled'}></label><label class="pf"><b>Q=</b><input class="n" inputmode="decimal" value="${esc(l.qty)}"></label>
+        <button class="x">✖</button></div>`).join('') : '<div class="muted s-none" style="direction:rtl">أضف المنتجات المباعة فعلاً بأسعارها الحقيقية، ويجب أن يساوي مجموعها المبلغ المدفوع تماماً</div>';
+      dl.querySelectorAll('.sline').forEach((row) => {
         const l = lines[Number(row.dataset.k)], pi = row.querySelector('.p'), ni = row.querySelector('.n');
         [pi, ni].forEach((i) => i.addEventListener('focus', () => i.select()));
         pi.addEventListener('input', () => { l.price = pi.value; schedule(); });
         ni.addEventListener('input', () => { l.qty = ni.value; schedule(); });
+        pi.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ni.focus(); } });
+        ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ps.focus(); } });
         row.querySelector('.x').addEventListener('click', () => { lines.splice(Number(row.dataset.k), 1); draw(); });
       });
       schedule();
     }
+    function setSave(on) { $('#save').disabled = !on; $('#saveSend').disabled = !on; }
     function schedule() { clearTimeout(timer); timer = setTimeout(preview, 150); }
     async function preview() {
-      $('#derr').textContent = ''; $('#save').disabled = true; last = null;
-      if (!lines.length) { $('#sum').innerHTML = '<div class="muted">أضف المنتجات المباعة فعلاً وكمياتها وأسعارها</div>'; return; }
+      $('#derr').textContent = ''; setSave(false); last = null;
+      if (!lines.length) { $('#sum').innerHTML = ''; $('#diff').textContent = money(total); $('#diff').style.color = ''; return; }
       try {
         const p = await eng.previewQuickDetail(payload());
         last = p;
-        document.querySelectorAll('#dl .line').forEach((row, k) => {
-          row.querySelector('.lt').textContent = `= ${money(p.lines[k].line_total)}`;
-        });
+        dl.querySelectorAll('.sline').forEach((row, k) => { row.querySelector('.lt').textContent = ` = ${money(p.lines[k].line_total)}`; });
         const ok = p.remaining === 0;
-        $('#sum').innerHTML = `<div class="kv"><span>المبلغ الثابت</span><b>${money(p.total)}</b></div>
-          <div class="kv"><span>مجموع المنتجات المضافة</span><b>${money(p.distributed)}</b></div>
-          <div class="kv"><span>الفرق عن المبلغ المدفوع</span><b style="color:${ok ? 'var(--ok)' : 'var(--red)'}">${ok ? '0 ✓' : money(p.remaining)}</b></div>
-          ${can.view_cost_profit ? `<div class="kv"><span>الربح الحقيقي</span><b style="color:var(--gold)">${money(p.real_profit)}</b></div>
-            <div class="kv"><span class="muted">بدل التقديري الجزافي</span><span class="muted">${money(p.flat_profit)}</span></div>` : ''}
-          ${p.below_cost.length ? `<div class="err">⚠ بيع بأقل من التكلفة: ${p.below_cost.map((x) => esc(x.name)).join('، ')}</div>` : ''}
-          ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').length ? `<div class="err">⚠ مخزون سالب: ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => esc(w.name)).join('، ')}</div>` : ''}`;
-        $('#save').disabled = !ok;
+        $('#diff').textContent = ok ? '0 ✓' : money(p.remaining); $('#diff').style.color = ok ? 'var(--ok)' : 'var(--red)';
+        $('#sum').innerHTML = [
+          can.view_cost_profit ? `الربح الحقيقي <b style="color:var(--gold)">${money(p.real_profit)}</b> <span class="muted">(بدل التقديري ${money(p.flat_profit)})</span>` : '',
+          p.below_cost.length ? `<span style="color:var(--red)">⚠ بيع بأقل من التكلفة: ${p.below_cost.map((x) => esc(x.name)).join('، ')}</span>` : '',
+          p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').length ? `<span style="color:var(--red)">⚠ مخزون سالب: ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => esc(w.name)).join('، ')}</span>` : '',
+        ].filter(Boolean).join('<br>');
+        setSave(ok);
       } catch (e) { $('#derr').textContent = errText(e); }
     }
-    async function save(allowBelowCost = false) {
-      $('#save').disabled = true;
+    async function save(send, allowBelowCost = false) {
+      setSave(false);
       try {
-        await eng.detailQuickSale(payload({ allowBelowCost })); toast('تمت إضافة التفاصيل'); detail(d.invoice.id);
+        await eng.detailQuickSale(payload({ allowBelowCost })); toast('تمت إضافة التفاصيل');
+        if (send) {                                          // save and send: the invoice goes to WhatsApp right away
+          const msg = await eng.share.invoiceMessage(inv.invoice_no).catch(() => null);
+          if (msg) {
+            const w = window.open(msg.link || `https://wa.me/?text=${encodeURIComponent(msg.text)}`, '_blank');
+            eng.share.markSent(msg.invoice_id).catch(() => {});
+            if (!w) showInvoice(app, inv.id);                // popup refused: show the invoice with its WhatsApp button
+          }
+        }
+        if (direct) list(); else detail(d.invoice.id);
       } catch (e) {
         if (e.code === 'BELOW_COST') {
-          if (await confirmBox('بيع بأقل من التكلفة', `${e.details.items.map((i) => i.name).join('، ')} — هل تريد المتابعة؟`)) return save(true);
+          if (await confirmBox('بيع بأقل من التكلفة', `${e.details.items.map((i) => i.name).join('، ')} — هل تريد المتابعة؟`)) return save(send, true);
         } else $('#derr').textContent = errText(e);
-        $('#save').disabled = false;
+        setSave(true);
       }
     }
-    $('#save').onclick = () => save();
-    draw();
+    $('#save').onclick = () => save(false);
+    $('#saveSend').onclick = () => save(true);
+    draw(); loadStock();
   }
   list();
   if (params.open) detail(params.open);

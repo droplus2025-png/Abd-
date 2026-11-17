@@ -71,8 +71,8 @@ export const confirmBox = (title, text, yes = 'متابعة', no = 'رجوع') =
 }));
 
 // header: back (right) | title (center) | logo (left)
-export function header(title, backLabel = 'الرئيسية') {
-  return `<div class="hdr"><button class="back" id="hdrBack">⌂ ${esc(backLabel)}</button><div class="title">${esc(title)}<span class="sdot off"></span></div><img class="logo" src="logo.png" alt=""></div>`;
+export function header(title, backLabel = 'رجوع') {
+  return `<div class="hdr"><button class="back" id="hdrBack">→ ${esc(backLabel)}</button><div class="title">${esc(title)}<span class="sdot off"></span></div><img class="logo" src="logo.png" alt=""></div>`;
 }
 export const money = (cents) => {
   const neg = cents < 0, a = Math.abs(cents);
