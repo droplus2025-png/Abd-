@@ -6,8 +6,9 @@ const TILES = [
   ['expenses', 'مصاريف', 'Expenses', '💸'], ['purchase', 'شراء', 'Purchases', '📦'],
   ['supret', 'ارجاع للمورد', 'Supplier Returns', '↪️'], ['custret', 'ارجاع من زبون', 'Customer Returns', '↩️'],
   ['stock', 'المخزون', 'Inventory', '🏬'], ['cash', 'الصندوق', 'Cash Register', '🧮'],
-  ['admin', 'الإدارة', 'Administration', '⚙️'], ['invoices', 'الفواتير', 'Invoices', '🧾'],
 ];
+const INVOICES = ['invoices', 'الفواتير', 'Invoices', '🧾'];            // beside the sell button (to its left)
+const ADMIN = ['admin', 'الإدارة والإعدادات', 'Administration & Settings', '⚙️'];   // full-width row at the bottom (owner only)
 const PERM = { stock: 'view_stock', purchase: 'purchase', expenses: 'expense', supret: 'return_supplier', custret: 'return_customer',
   customers: 'collect_debt', suppliers: 'pay_supplier', cash: 'cash_count', invoices: 'view_invoices' };
 const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }],
@@ -15,24 +16,29 @@ const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: 
 
 export function renderHome(app) {
   const p = app.session.permissions, owner = app.session.role === 'owner';
-  const d = new Date().toLocaleDateString('ar-MA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
+  const now = new Date();
+  const d = now.toLocaleDateString('ar-MA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' });
+  const year = now.getFullYear();
   const tile = ([id, ar, en, ico]) => {
-    if (id === 'admin' && !owner) return '<div></div>';
+    if (id === 'admin' && !owner) return '';
     const off = id === 'invoices' ? !(p.view_invoices || p.quick_sale) && !owner : PERM[id] && !p[PERM[id]] && !owner;
-    return `<button class="tile" data-id="${id}" ${off ? 'disabled' : ''}><div class="ico">${ico}</div><div><div class="t1">${ar}</div><div class="t2">${en}</div></div></button>`;
+    return `<button class="tile ${id === 'admin' ? 'admin' : ''}" data-id="${id}" ${off ? 'disabled' : ''}><div class="ico">${ico}</div><div><div class="t1">${ar}</div><div class="t2">${en}</div></div></button>`;
   };
   mount(`<div class="screen">
-    <div class="homehead"><img src="logo.png" alt=""><div><div class="name">${esc(app.cfg.store_name)}</div><div class="date">${esc(d)}</div></div></div>
+    <div class="homehead"><img src="logo.png" alt=""><div><div class="name">${esc(app.cfg.store_name)}</div><div class="date">${esc(d)} <span class="yr">${year}</span></div></div></div>
     <div class="body">
-      <button class="tile sell" data-id="sell" ${!(p.sell || p.quick_sale) ? 'disabled' : ''}><div class="ico">🛒</div><div><div class="t1" style="font-size:1.6rem">بيع</div><div class="t2">سريع أو حسب الطلب</div></div></button>
-      <div class="grid2">${TILES.map(tile).join('')}</div>
+      <div class="toprow">
+        <button class="tile sell" data-id="sell" ${!(p.sell || p.quick_sale) ? 'disabled' : ''}><div class="ico">🛒</div><div><div class="t1">بيع</div><div class="t2">سريع أو حسب الطلب</div></div></button>
+        ${tile(INVOICES)}
+      </div>
+      <div class="grid2">${TILES.map(tile).join('')}${tile(ADMIN)}</div>
       <button class="btn" id="out" style="margin-top:4px">خروج</button>
     </div></div>`);
   app.pendingCount = 0;
   document.querySelectorAll('.tile').forEach((b) => b.addEventListener('click', () => {
     const id = b.dataset.id;
     if (id === 'invoices') return app.go('invoices', { filter: app.pendingCount > 0 ? 'pending' : 'all' });   // go straight to what must be completed
-    if (LIVE[id]) app.go(...LIVE[id]); else app.go('soon', { title: TILES.find((t) => t[0] === id)?.[1] || 'قريباً' });
+    if (LIVE[id]) app.go(...LIVE[id]); else app.go('soon', { title: [...TILES, INVOICES, ADMIN].find((t) => t[0] === id)?.[1] || 'قريباً' });
   }));
   $('#out').onclick = () => app.logout();
   // owner: reminder when no recent backup exists (the data lives on this device only)

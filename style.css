@@ -329,3 +329,20 @@ body.kb .s-ext,body.kb .s-srch,body.kb .s-toq{min-height:42px}
 .s-info .s-sg{position:absolute;top:calc(100% + 4px);inset-inline:0;z-index:30}
 .s-mini{width:100%;min-width:0;background:#dff3e6;color:#0b2a1a;border:1px solid #7fc79b;border-radius:8px;padding:5px 6px;font-size:.85rem;font-weight:700;text-align:center;outline:none}
 .s-mini:focus{border-color:#22c55e}
+
+/* ===== v1.4 : home screen ===== */
+.toprow{display:grid;grid-template-columns:1.2fr 1fr;gap:10px}
+.toprow .tile{flex-direction:column;justify-content:center;text-align:center;gap:2px;min-height:96px;padding:10px 8px}
+.toprow .tile .ico{font-size:2rem;line-height:1}
+.toprow .tile.sell .t1{font-size:1.45rem}
+.toprow .tile.sell .t2{font-size:.78rem}
+.tile.admin{grid-column:1 / -1;justify-content:center;text-align:center}
+.homehead .date .yr{color:var(--gold);font-weight:800}
+/* shop name: gold gradient with a 3D relief (drop-shadows follow the clipped letters, text-shadow would show through) */
+.homehead .name{background:linear-gradient(180deg,#fff3b0 0%,#ffd84d 28%,#e3a622 52%,#b97a0c 74%,#ffd24a 100%);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  font-weight:900;letter-spacing:.5px;filter:drop-shadow(0 1px 0 #8a5a00) drop-shadow(0 2px 0 #6b4400) drop-shadow(0 3px 0 #4d3000) drop-shadow(0 6px 5px #000a)}
+@media (min-width:900px){
+  .grid2{grid-template-columns:repeat(4,1fr)}
+  .toprow{grid-template-columns:1.2fr 1fr}
+  .toprow .tile{min-height:120px}.toprow .tile.sell .t1{font-size:1.9rem}
+}
