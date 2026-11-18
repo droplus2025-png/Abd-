@@ -561,3 +561,26 @@ test('quick sale details: optional customer typed with the details (sync-safe: s
   await w.emp.detailQuickSale({ invoice: q2.invoice.id, lines: [{ productId: p.id, qty: '1', price: '40' }] });
   assert.equal((await w.owner.reports.invoice(q2.invoice.id)).party, null);
 });
+
+test('calculator quick sale: one invoice, one line per term, then details link the products and take the stock out', async () => {
+  const w = await world();
+  const A = await w.owner.products.create({ name: 'A', purchasePrice: '2', salePrice: '4', qty: '50' });
+  await w.owner.settings.set('quick_sale_profit_pct', 10);
+  // 14+3×5+5×2+18  (quantity = second number of a product)
+  const r = await w.emp.calcSale({ lines: [{ price: '14', qty: '1' }, { price: '3', qty: '5' }, { price: '5', qty: '2' }, { price: '18', qty: '1' }] });
+  assert.equal(r.invoice.total, 5700); assert.equal(r.invoice.paid, 5700); assert.equal(r.invoice.profit, 570);   // flat 10 %
+  assert.deepEqual(r.lines.map((l) => [l.name, l.line_total]), [['produit 1', 1400], ['produit 2', 1500], ['produit 3', 1000], ['produit 4', 1800]]);
+  assert.equal(await w.owner.reports.cashBalance(), 5700);
+  assert.equal((await w.emp.reports.pendingQuickSales()).count, 1);
+  await rejects(w.emp.calcSale({ lines: [{ price: '0', qty: '1' }] }), 'BAD_NUMBER');
+  await rejects(w.emp.calcSale({ lines: [] }), 'EMPTY_CART');
+  // details: product A replaces "produit 2" (qty 5, invoice price 3 kept although the catalogue says 4); the rest as external items
+  await w.auth.setUserPermission(w.ownerS, w.empS.userId, 'edit_sale_price', true);
+  const emp2 = createEngine({ store: w.store, session: await w.auth.login('5678'), now: w.now });
+  const lines = [{ external: { name: 'x1', cost: '10', price: '14', qty: '1' } }, { productId: A.id, qty: '5', price: '3' },
+    { external: { name: 'x3', cost: '4', price: '5', qty: '2' } }, { external: { name: 'x4', cost: '15', price: '18', qty: '1' } }];
+  const d = await emp2.detailQuickSale({ invoice: r.invoice.id, lines });
+  assert.equal(d.invoice.total, 5700);
+  assert.equal((await w.owner.products.search('A', 5))[0].qty, 45000);       // 5 taken out of the stock
+  assert.equal((await emp2.reports.pendingQuickSales()).count, 0);
+});

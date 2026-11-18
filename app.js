@@ -9,6 +9,7 @@ import { toast } from './ui-core.js';
 import { renderLogin, renderSetup } from './ui-login.js';
 import { renderHome, renderSoon } from './ui-home.js';
 import { renderSale } from './ui-sale.js';
+import { renderCalc } from './ui-calc.js';
 import { renderPurchase } from './ui-purchase.js';
 import { renderReturn } from './ui-returns.js';
 import { renderInvoices } from './ui-invoices.js';
@@ -18,7 +19,7 @@ import { renderCash } from './ui-cash.js';
 import { renderStock } from './ui-stock.js';
 import { renderAdmin } from './ui-admin.js';
 
-const SCREENS = { login: renderLogin, setup: renderSetup, home: renderHome, soon: renderSoon, sale: renderSale, purchase: renderPurchase, return: renderReturn, invoices: renderInvoices, debts: renderDebts, expenses: renderExpenses, cash: renderCash, stock: renderStock, admin: renderAdmin };
+const SCREENS = { login: renderLogin, setup: renderSetup, home: renderHome, soon: renderSoon, sale: renderSale, calc: renderCalc, purchase: renderPurchase, return: renderReturn, invoices: renderInvoices, debts: renderDebts, expenses: renderExpenses, cash: renderCash, stock: renderStock, admin: renderAdmin };
 export const app = { screen: null, updatePending: false };
 
 const deviceId = localStorage.getItem('pos_device_id') || (() => { const id = crypto.randomUUID(); localStorage.setItem('pos_device_id', id); return id; })();

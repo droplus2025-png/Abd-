@@ -89,7 +89,12 @@ export async function renderInvoices(app, params = {}) {
     const total = d.invoice.total, inv = d.invoice;
     const canPrice = !!can.edit_sale_price;                  // prices are those really charged; without the right to edit them the product's own price is used
     const cur = String(app.cfg?.currency || '').toLowerCase();
-    let lines = [], timer, last = null, query = '', rows = [];   // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
+    // {kind:'product', id, sku, name, qty, price} | {kind:'ext', name, qty, price, cost} | {kind:'ph', name, qty, price}
+    // 'ph' = a line typed on the calculator (produit n): choose its product from the stock list (quantity and INVOICE price are kept) or make it an external item
+    let lines = (d.lines || []).filter((l) => l.kind === 'quick' && l.name !== 'بيع سريع').map((l) => ({ kind: 'ph', name: l.name, qty: qtyStr(l.qty), price: price4(l.unit_price) }));
+    let timer, last = null, query = '', rows = [];
+    let sel = lines.findIndex((l) => l.kind === 'ph');                // the placeholder the next product replaces
+    const nextPh = (from = 0) => { const k = lines.findIndex((l, i) => i >= from && l.kind === 'ph'); return k >= 0 ? k : lines.findIndex((l) => l.kind === 'ph'); };
     $('#main').innerHTML = `
       <div class="det2">
         <div class="s-info" id="info">
@@ -125,6 +130,13 @@ export async function renderInvoices(app, params = {}) {
     async function loadStock() { try { rows = await eng.products.search(query, 60); } catch { rows = []; } renderStock(); }
     function addProduct(p) {
       if (!p) return;
+      if (sel >= 0 && lines[sel]?.kind === 'ph') {                    // replaces the selected calculator line, keeps its quantity and its invoice price
+        const ph = lines[sel];
+        lines[sel] = { kind: 'product', id: p.id, name: p.name, sku: p.sku, qty: ph.qty, price: ph.price };
+        sel = nextPh(sel + 1); draw();
+        if (document.activeElement === ps) ps.select(); else if (query) { query = ''; ps.value = ''; loadStock(); }
+        return;
+      }
       const ex = lines.find((l) => l.kind === 'product' && l.id === p.id);
       if (ex) ex.qty = String((Number(ex.qty) || 0) + 1); else lines.push({ kind: 'product', id: p.id, name: p.name, sku: p.sku, qty: '1', price: price4(p.sale_price) });
       draw(); dl.scrollTop = dl.scrollHeight;
@@ -141,25 +153,26 @@ export async function renderInvoices(app, params = {}) {
       const hit = rows.find((p) => (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q)) || (rows.length === 1 ? rows[0] : null);
       if (hit) addProduct(hit);
     });
-    $('#ext').onclick = () => openExternal(app, (v) => { lines.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); dl.scrollTop = dl.scrollHeight; loadStock(); });
+    $('#ext').onclick = () => openExternal(app, (v) => { if (sel >= 0 && lines[sel]?.kind === 'ph') { const ph = lines[sel]; lines[sel] = { kind: 'ext', name: v.name, qty: ph.qty, price: ph.price, cost: v.cost }; sel = nextPh(sel + 1); } else lines.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); dl.scrollTop = dl.scrollHeight; loadStock(); });
 
     const payload = (extra = {}) => ({ invoice: d.invoice.id, ...extra,
-      lines: lines.map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });
+      lines: lines.filter((l) => l.kind !== 'ph').map((l) => (l.kind === 'product' ? { productId: l.id, qty: l.qty, price: l.price } : { external: { name: l.name, cost: l.cost, price: l.price, qty: l.qty } })) });
 
     // lines, left to right: [Sku- product] [p=price] [Q=quantity] [X]
     function draw() {
-      dl.innerHTML = lines.length ? lines.map((l, k) => `<div class="sline ${l.kind === 'ext' ? 'ext' : ''}" data-k="${k}">
-        <div class="nm">${l.kind === 'product' ? `<b class="sku">${l.sku}</b>- ` : '＋ '}${esc(l.name)}<span class="lt"></span></div>
+      dl.innerHTML = lines.length ? lines.map((l, k) => `<div class="sline ${l.kind === 'ext' ? 'ext' : ''} ${l.kind === 'ph' ? 'ph' : ''} ${k === sel ? 'sel' : ''}" data-k="${k}">
+        <div class="nm">${l.kind === 'product' ? `<b class="sku">${l.sku}</b>- ` : l.kind === 'ph' ? '❓ ' : '＋ '}${esc(l.name)}<span class="lt">${l.kind === 'ph' ? ' ← اختر المنتج من القائمة' : ''}</span></div>
         <label class="pf"><b>p=</b><input class="p" inputmode="decimal" value="${esc(l.price)}" ${canPrice ? '' : 'disabled'}></label><label class="pf"><b>Q=</b><input class="n" inputmode="decimal" value="${esc(l.qty)}"></label>
         <button class="x">✖</button></div>`).join('') : '<div class="muted s-none" style="direction:rtl">أضف المنتجات المباعة فعلاً بأسعارها الحقيقية، ويجب أن يساوي مجموعها المبلغ المدفوع تماماً</div>';
       dl.querySelectorAll('.sline').forEach((row) => {
         const l = lines[Number(row.dataset.k)], pi = row.querySelector('.p'), ni = row.querySelector('.n');
+        if (l.kind === 'ph') row.querySelector('.nm').addEventListener('click', () => { sel = Number(row.dataset.k); draw(); });   // tap a calculator line to choose which one the next product fills
         [pi, ni].forEach((i) => i.addEventListener('focus', () => i.select()));
         pi.addEventListener('input', () => { l.price = pi.value; schedule(); });
         ni.addEventListener('input', () => { l.qty = ni.value; schedule(); });
         pi.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ni.focus(); } });
         ni.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ps.focus(); } });
-        row.querySelector('.x').addEventListener('click', () => { lines.splice(Number(row.dataset.k), 1); draw(); });
+        row.querySelector('.x').addEventListener('click', () => { lines.splice(Number(row.dataset.k), 1); sel = nextPh(0); draw(); });
       });
       schedule();
     }
@@ -167,7 +180,8 @@ export async function renderInvoices(app, params = {}) {
     function schedule() { clearTimeout(timer); timer = setTimeout(preview, 150); }
     async function preview() {
       $('#derr').textContent = ''; setSave(false); last = null;
-      if (!lines.length) { $('#sum').innerHTML = ''; $('#diff').textContent = money(total); $('#diff').style.color = ''; return; }
+      const left = lines.filter((l) => l.kind === 'ph').length;
+      if (!lines.some((l) => l.kind !== 'ph')) { $('#sum').innerHTML = left ? `<span style="color:var(--hot)">⚠ ${left} أسطر بانتظار تحديد المنتج</span>` : ''; $('#diff').textContent = money(total); $('#diff').style.color = left ? 'var(--hot)' : ''; return; }
       try {
         const p = await eng.previewQuickDetail(payload());
         last = p;
@@ -175,6 +189,7 @@ export async function renderInvoices(app, params = {}) {
         const ok = p.remaining === 0;
         $('#diff').textContent = ok ? '0 ✓' : money(p.remaining); $('#diff').style.color = ok ? 'var(--ok)' : 'var(--red)';
         $('#sum').innerHTML = [
+          left ? `<span style="color:var(--hot)">⚠ ${left} أسطر بانتظار تحديد المنتج</span>` : '',
           can.view_cost_profit ? `الربح الحقيقي <b style="color:var(--gold)">${money(p.real_profit)}</b> <span class="muted">(بدل التقديري ${money(p.flat_profit)})</span>` : '',
           p.below_cost.length ? `<span style="color:var(--red)">⚠ بيع بأقل من التكلفة: ${p.below_cost.map((x) => esc(x.name)).join('، ')}</span>` : '',
           p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').length ? `<span style="color:var(--red)">⚠ مخزون سالب: ${p.warnings.filter((w) => w.type === 'NEGATIVE_STOCK').map((w) => esc(w.name)).join('، ')}</span>` : '',

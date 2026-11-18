@@ -7,11 +7,11 @@ const TILES = [
   ['supret', 'ارجاع للمورد', 'Supplier Returns', '↪️'], ['custret', 'ارجاع من زبون', 'Customer Returns', '↩️'],
   ['stock', 'المخزون', 'Inventory', '🏬'], ['cash', 'الصندوق', 'Cash Register', '🧮'],
 ];
-const INVOICES = ['invoices', 'الفواتير', 'Invoices', '🧾'];            // beside the sell button (to its left)
+const INVOICES = ['invoices', 'الفواتير', 'Invoices', '🧾'];            // slim full-width row under the two sell buttons
 const ADMIN = ['admin', 'الإدارة والإعدادات', 'Administration & Settings', '⚙️'];   // full-width row at the bottom (owner only)
 const PERM = { stock: 'view_stock', purchase: 'purchase', expenses: 'expense', supret: 'return_supplier', custret: 'return_customer',
   customers: 'collect_debt', suppliers: 'pay_supplier', cash: 'cash_count', invoices: 'view_invoices' };
-const LIVE = { sell: ['sale'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }],
+const LIVE = { sell: ['sale'], quick: ['calc'], purchase: ['purchase'], stock: ['stock'], admin: ['admin'], custret: ['return', { mode: 'customer' }], supret: ['return', { mode: 'supplier' }],
   invoices: ['invoices'], expenses: ['expenses'], cash: ['cash'], customers: ['debts', { mode: 'customer' }], suppliers: ['debts', { mode: 'supplier' }] };
 
 export function renderHome(app) {
@@ -28,9 +28,10 @@ export function renderHome(app) {
     <div class="homehead"><img src="logo.png" alt=""><div><div class="name">${esc(app.cfg.store_name)}</div><div class="date">${esc(d)} <span class="yr">${year}</span></div></div></div>
     <div class="body">
       <div class="toprow">
-        <button class="tile sell" data-id="sell" ${!(p.sell || p.quick_sale) ? 'disabled' : ''}><div class="ico">🛒</div><div><div class="t1">بيع</div><div class="t2">سريع أو حسب الطلب</div></div></button>
-        ${tile(INVOICES)}
+        <button class="tile sell" data-id="sell" ${!p.sell && !owner ? 'disabled' : ''}><div class="ico">🛒</div><div><div class="t1">بيع بالفاتورة</div><div class="t2">اختيار المنتجات من المخزون</div></div></button>
+        <button class="tile quick" data-id="quick" ${!p.quick_sale && !owner ? 'disabled' : ''}><div class="ico">⚡</div><div><div class="t1">بيع سريع</div><div class="t2">آلة حاسبة تنتج فاتورة</div></div></button>
       </div>
+      <div class="invrow">${tile(INVOICES)}</div>
       <div class="grid2">${TILES.map(tile).join('')}${tile(ADMIN)}</div>
       <button class="btn" id="out" style="margin-top:4px">خروج</button>
     </div></div>`);

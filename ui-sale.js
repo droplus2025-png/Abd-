@@ -11,13 +11,13 @@ import { money as M } from './index.js';
 import { validPhone } from './phone.js';
 import { beep } from './beep.js';
 
-export async function renderSale(app) {
+export async function renderSale(app) {   // "بيع بالفاتورة": the normal sale (cart); the quick sale lives in ui-calc.js
   const eng = app.engine;
   const cur = String(app.cfg?.currency || '').toLowerCase();
   let cart = [];            // {kind:'product', productId, sku, name, qty, price} | {kind:'ext', name, qty, price, cost}
   let quick = '';           // amount typed on the keypad
   let query = '';           // search text
-  let normal = false;       // false = QUICK mode (keypad); true = NORMAL mode (cart). A non-empty cart is always normal.
+  let normal = true;        // always the NORMAL mode (cart): the quick sale is the calculator screen (ui-calc.js)
   let busy = false;
   let rows = [];            // stock list shown (filtered by the search)
 
@@ -192,7 +192,7 @@ export async function renderSale(app) {
     const hit = rows.find((p) => (/^\d+$/.test(q) ? p.sku === Number(q) : p.name.toLowerCase() === q)) || (rows.length === 1 ? rows[0] : null);
     if (hit) addProduct(hit); else if (!rows.length) toast('لا نتائج', true, 1200);
   });
-  $('#toQuick').onclick = () => { normal = false; query = ''; qIn.value = ''; qIn.blur(); loadRows(); draw(); };   // only offered while the cart is empty
+  $('#toQuick').onclick = () => app.go('calc');                       // only offered while the cart is empty: the quick sale = the calculator
   $('#hdrBack').onclick = async () => { if (cart.length && !(await confirmBox('السلة غير فارغة', 'الخروج دون حفظ؟', 'خروج', 'بقاء'))) return; app.go('home'); };
   $('#ext').onclick = () => openExternal(app, (v) => { normal = true; cart.push({ kind: 'ext', name: v.name, qty: v.qty, price: v.price, cost: v.cost }); draw(); cartEl.scrollTop = cartEl.scrollHeight; loadRows(); });
 
@@ -258,7 +258,7 @@ export async function renderSale(app) {
     try {
       const r = await eng.sale(input);
       const msg = await eng.share.invoiceMessage(r.invoice.invoice_no).catch(() => null);
-      cart = []; quick = ''; query = ''; qIn.value = ''; normal = false; clearCust(); loadRows(); draw();      // back to quick mode
+      cart = []; quick = ''; query = ''; qIn.value = ''; normal = true; clearCust(); loadRows(); draw();
       m.remove();
       done(r, msg);
       return false;
