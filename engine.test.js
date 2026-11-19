@@ -395,7 +395,7 @@ test('quick sale details: whole total distributed, normal-sale freedom, real pro
   assert.equal((await w.emp.reports.invoices()).filter(i => i.type === 'quick_detail').length, 0);        // internal record hidden
   await rejects(w.emp.detailQuickSale({ invoice: q.invoice.id, lines: mine }), 'ALREADY_DETAILED');       // once only
   const msg = await w.emp.share.invoiceMessage(q.invoice.invoice_no);
-  assert.match(msg.text, /1\. A/); assert.match(msg.text, /Montant total : 500 DH/);
+  assert.match(msg.text, /1- A   3×40   120/); assert.match(msg.text, /Montant total : 500 DH/);
 
   // a return after the details works on the detail lines, at the real price and cost
   const ret = await w.emp.customerReturn({ invoice: q.invoice.invoice_no, lines: [{ originLineId: view.lines[0].id, qty: 1 }] });
@@ -583,4 +583,18 @@ test('calculator quick sale: one invoice, one line per term, then details link t
   assert.equal(d.invoice.total, 5700);
   assert.equal((await w.owner.products.search('A', 5))[0].qty, 45000);       // 5 taken out of the stock
   assert.equal((await emp2.reports.pendingQuickSales()).count, 0);
+});
+
+test('invoice text: header row, one line per product, forced left-to-right so the total sits at the far right', async () => {
+  const { DEFAULT_SETTINGS } = await import('./settings.js');
+  const text = renderInvoice({
+    invoice: { invoice_no: '61119001', type: 'sale', created_at: '2026-11-19T19:59:00Z', total: 12000, paid: 12000, credit_amount: 0, note: null },
+    lines: [{ name: 'منتج 1', qty: 2000, unit_price: 250000, line_total: 5000 }, { name: 'منتج 2', qty: 1000, unit_price: 700000, line_total: 7000 }],
+    party: null, settings: { ...DEFAULT_SETTINGS, invoice_template: DEFAULT_SETTINGS.invoice_template },
+  });
+  const rows = text.split('\n').filter((l) => l.startsWith('\u200E'));
+  assert.equal(rows.length, 3);
+  assert.match(rows[0], /produit\s+q×p\s+Total/);
+  assert.match(rows[1], /^\u200E1- منتج 1 {3}2×25 {3}50$/);
+  assert.match(rows[2], /^\u200E2- منتج 2 {3}1×70 {3}70$/);
 });

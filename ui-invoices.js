@@ -1,5 +1,5 @@
 // Invoices archive: search, filters, detail, WhatsApp, and product details for quick sales.
-import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen, priceShort, partySuggest } from './ui-core.js';
+import { mount, $, esc, header, toast, errText, openModal, confirmBox, money, price4, qtyStr, TYPE_AR, fmtWhen, fmtTime, priceShort, partySuggest } from './ui-core.js';
 import { money as M } from './index.js';
 import { openExternal } from './ui-external.js';
 
@@ -37,11 +37,11 @@ export async function renderInvoices(app, params = {}) {
     let rows = await eng.reports.searchInvoices({ text: $('#q').value, types: f[2], limit: 150 });
     if (filter === 'pending') rows = rows.filter((i) => !i.has_detail);
     $('#main').innerHTML = rows.length ? `<div class="results" style="max-height:none">${rows.map((i) => `
-      <button class="res" data-id="${i.id}" style="grid-template-columns:auto 1fr auto">
+      <button class="res inv-row" data-id="${i.id}">
         <span class="sku">${i.invoice_no}</span>
-        <span>${TYPE_AR[i.type] || i.type}${i.party_name ? ' · ' + esc(i.party_name) : ''}
-          ${i.type === 'quick_sale' && !i.has_detail ? ' <span class="pill amber">بدون تفاصيل</span>' : ''}${i.is_modified ? ' <span class="pill">معدلة</span>' : ''}
-          <br><span class="muted" style="font-size:.8rem">${fmtWhen(i.created_at)}</span></span>
+        <span class="inv-t"><b class="inv-op">${TYPE_AR[i.type] || i.type}</b>${i.party_name ? `<span class="inv-dot">·</span><span class="inv-cu">${esc(i.party_name)}</span>` : ''}</span>
+        ${i.type === 'quick_sale' && !i.has_detail ? '<span class="pill amber">بدون تفاصيل</span>' : ''}${i.is_modified ? '<span class="pill">معدلة</span>' : ''}
+        <span class="inv-tm" dir="ltr">${fmtTime(i.created_at, app.cfg?.timezone)}</span>
         <span class="p">${money(i.total)}</span></button>`).join('')}</div>` : '<div class="muted" style="padding:14px">لا توجد فواتير</div>';
     document.querySelectorAll('#main .res').forEach((b) => b.addEventListener('click', async () => {
       const id = b.dataset.id, r = rows.find((x) => x.id === id);
@@ -63,20 +63,17 @@ export async function renderInvoices(app, params = {}) {
     if (!d) return toast('الفاتورة غير موجودة', true);
     back = list; $('#q').style.display = 'none'; $('#chips').style.display = 'none';
     const i = d.invoice;
+    let msg; try { msg = await eng.share.invoiceMessage(id); } catch (e) { return toast(errText(e), true); }
+    // the invoice looks EXACTLY like the one sent to the customer (same text, same template); internal figures (profit, returns) stay below it
+    const inner = (d.returns.length ? d.returns.map((r) => `<div class="kv"><span class="muted">إرجاع ${r.invoice_no}</span><b>${money(r.total)}</b></div>`).join('') : '')
+      + (can.view_cost_profit && i.profit !== undefined && ['sale', 'quick_sale', 'return_customer'].includes(i.type)
+        ? `<div class="kv"><span>${d.has_detail ? 'الربح الحقيقي' : i.type === 'quick_sale' ? 'الربح (نسبة جزافية)' : 'الربح'}</span><b>${money(d.real_profit ?? i.profit)}</b></div>` : '');
     $('#main').innerHTML = `
-      <div class="card"><div class="kv"><span>رقم</span><b>${i.invoice_no}</b></div>
-        <div class="kv"><span>${TYPE_AR[i.type] || i.type}</span><span class="muted">${fmtWhen(i.created_at)}</span></div>
-        ${d.party ? `<div class="kv"><span>${esc(d.party.name)}</span><span class="muted" dir="ltr">${esc(d.party.phone)}</span></div>` : ''}
-        ${i.note ? `<div class="kv"><span>${esc(i.note)}</span><span></span></div>` : ''}</div>
-      ${d.lines.length ? `<div class="card">${d.lines.map((l) => `<div class="kv"><span>${esc(l.name)} <span class="muted">· ${qtyStr(l.qty)} × ${price4(l.unit_price)}</span></span><b>${money(l.line_total)}</b></div>`).join('')}</div>` : ''}
-      <div class="card"><div class="kv"><span>الإجمالي</span><b>${money(i.total)}</b></div>
-        ${i.credit_amount && ['sale', 'purchase'].includes(i.type) ? `<div class="kv"><span>المدفوع</span><b>${money(i.paid)}</b></div><div class="kv"><span>المتبقي</span><b style="color:var(--amber)">${money(d.remaining)}</b></div>` : ''}
-        ${can.view_cost_profit && i.profit !== undefined && ['sale', 'quick_sale', 'return_customer'].includes(i.type)
-          ? `<div class="kv"><span>${d.has_detail ? 'الربح الحقيقي' : i.type === 'quick_sale' ? 'الربح (نسبة جزافية)' : 'الربح'}</span><b>${money(d.real_profit ?? i.profit)}</b></div>` : ''}
-        ${d.returns.length ? d.returns.map((r) => `<div class="kv"><span class="muted">إرجاع ${r.invoice_no}</span><b>${money(r.total)}</b></div>`).join('') : ''}</div>
+      <div class="inv-paper">${msg.text.split('\n').map((ln) => `<div dir="auto">${esc(ln) || '&nbsp;'}</div>`).join('')}</div>
+      ${inner ? `<div class="card">${inner}</div>` : ''}
       <div class="row"><button class="btn gold big" id="wa" style="flex:1">واتساب / نسخ</button>
         ${d.quick_pending && can.quick_sale ? '<button class="btn amber big" id="det" style="flex:1">إضافة التفاصيل</button>' : ''}</div>`;
-    $('#wa').onclick = () => showInvoice(app, id);
+    $('#wa').onclick = () => { window.open(msg.link || `https://wa.me/?text=${encodeURIComponent(msg.text)}`, '_blank'); eng.share.markSent(msg.invoice_id).catch(() => {}); };
     $('#det')?.addEventListener('click', () => editDetails(d));
   }
 

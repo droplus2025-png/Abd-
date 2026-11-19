@@ -1,6 +1,9 @@
 // Settings edited from the Administration screen (owner). Everybody can read them.
 import { fail } from './errors.js';
 
+export const OLD_LINE_FORMAT = '{n}. {name}\n   {qty}×{price}  {total}';
+export const LINE_FORMAT = '{n}- {name}   {qty}×{price}   {total}';   // one line per product, total at the far right
+
 export const DEFAULT_SETTINGS = {
   store_name: 'اسم المحل', store_phone: '', store_address: '', thanks_text: 'شكراً لثقتكم، نتمنى رؤيتكم قريباً',
   currency: 'DH', wa_country_code: '212', timezone: 'Africa/Casablanca',
@@ -9,8 +12,8 @@ export const DEFAULT_SETTINGS = {
   sale_beep: true,                                            // sale screen: bip on every button, double bip on pay
   invoice_template: {
     separator: '━━━━━━━━━━━━━━', show_phone: true, show_address: true, show_customer: true, bold_total: true,
-    line_format: '{n}. {name}\n   {qty}×{price}  {total}',
-    labels: { invoice: 'Fact n°', date: 'Date', time: 'Heure', items: 'Nombre des articles', total: 'Montant total',
+    line_format: LINE_FORMAT,
+    labels: { product: 'produit', qp: 'q×p', line_total: 'Total', invoice: 'Fact n°', date: 'Date', time: 'Heure', items: 'Nombre des articles', total: 'Montant total',
       paid: 'Payé', remaining: 'Reste', phone: 'Tel', address: 'Adresse', customer: 'Client' },
     footer: '{thanks_text}',
   },
@@ -30,6 +33,8 @@ export function settingsApi(ctx) {
       return store.transaction(async (tx) => {
         const out = {};
         for (const k of Object.keys(DEFAULT_SETTINGS)) out[k] = (await tx.get('settings', k))?.value ?? DEFAULT_SETTINGS[k];
+        const t = out.invoice_template;                     // template saved earlier: old two-line format -> new one-line format, new labels filled in
+        out.invoice_template = { ...t, line_format: t.line_format === OLD_LINE_FORMAT ? LINE_FORMAT : t.line_format, labels: { ...DEFAULT_SETTINGS.invoice_template.labels, ...t.labels } };
         return out;
       });
     },

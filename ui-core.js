@@ -85,6 +85,8 @@ export const qtyStr = (q) => (q / 1000).toFixed(3).replace(/0+$/, '').replace(/\
 export const TYPE_AR = { sale: 'بيع', quick_sale: 'بيع سريع', quick_detail: 'تفصيل', purchase: 'شراء', deposit: 'إيداع', withdrawal: 'سحب',
   expense: 'مصروف', return_customer: 'إرجاع من زبون', return_supplier: 'إرجاع للمورد', collect: 'قبض دين', pay_supplier: 'دفع للمورد',
   opening_debt_customer: 'دين سابق', opening_debt_supplier: 'مستحق سابق', cash_adjustment: 'تسوية الصندوق' };
+// time only (HH:MM): the date is already inside the invoice number (a mm jj ooo)
+export const fmtTime = (iso, tz) => { try { return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz || undefined }); } catch { return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); } };
 export const fmtWhen = (iso) => new Date(iso).toLocaleString('ar-MA-u-nu-latn', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 // Suggestions of KNOWN customers / suppliers while typing a name or a phone: tap one to fill both fields.

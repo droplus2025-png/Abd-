@@ -415,3 +415,17 @@ body.kb .c-lines{min-height:60px}body.kb .c-kpad{grid-auto-rows:44px}
 .sline.ph.sel{box-shadow:0 0 0 2px var(--hot),0 0 14px #ff3d7f99;background:#4d1240}
 .sline.ph .lt{color:var(--hot);font-weight:800}
 .invrow .tile{width:100%}
+
+/* -- invoices archive: one line per invoice [number] [operation · customer] [pills] [time] [total] */
+.res.inv-row{display:flex;align-items:center;gap:8px;padding:12px 12px}
+.inv-row .sku{flex:none}
+.inv-t{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden;white-space:nowrap}
+.inv-op{color:var(--text);font-weight:800;flex:none}
+.inv-dot{color:var(--muted);flex:none}
+.inv-cu{color:#7fd6ff;font-weight:700;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.inv-row .pill{flex:none;font-size:.65rem;padding:1px 7px}
+.inv-tm{flex:none;color:var(--muted);font-size:.85rem;font-variant-numeric:tabular-nums}
+.inv-row .p{flex:none;min-width:34px;text-align:left}
+/* -- invoice shown as the customer receives it */
+.inv-paper{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;line-height:1.7;
+  white-space:pre-wrap;word-break:break-word;-webkit-user-select:text;user-select:text}

@@ -73,8 +73,8 @@ export async function renderAdmin(app) {
           <div>${[['show_phone', 'إظهار هاتف المحل'], ['show_address', 'إظهار العنوان'], ['show_customer', 'إظهار اسم الزبون'], ['bold_total', 'المجموع بخط عريض']]
             .map(([k, l]) => `<label class="sw"><span>${l}</span><input type="checkbox" class="tpl" data-k="${k}" ${tpl[k] ? 'checked' : ''}></label>`).join('')}
             <div class="lbl">شكل سطر المنتج</div>
-            <select class="inp tpl" data-k="line_format"><option value="${esc(DEFAULT_SETTINGS.invoice_template.line_format)}" ${tpl.line_format === DEFAULT_SETTINGS.invoice_template.line_format ? 'selected' : ''}>سطران: الاسم ثم الكمية×السعر والمجموع</option>
-              <option value="{n}. {name} {qty}×{price} = {total}" ${tpl.line_format === '{n}. {name} {qty}×{price} = {total}' ? 'selected' : ''}>سطر واحد مختصر</option></select>
+            <select class="inp tpl" data-k="line_format"><option value="${esc(DEFAULT_SETTINGS.invoice_template.line_format)}" ${tpl.line_format === DEFAULT_SETTINGS.invoice_template.line_format ? 'selected' : ''}>سطر واحد: المنتج ثم الكمية×السعر والمجموع (الافتراضي)</option>
+              <option value="{n}. {name}\n   {qty}×{price}  {total}" ${tpl.line_format === '{n}. {name}\n   {qty}×{price}  {total}' ? 'selected' : ''}>سطران: الاسم ثم الكمية×السعر والمجموع</option></select>
             <div class="lbl">الفاصل</div><input class="inp tpl" data-k="separator" value="${esc(tpl.separator)}">
             <div class="lbl">عبارة الختام (تأخذ {thanks_text} من الإعدادات)</div><input class="inp tpl" data-k="footer" value="${esc(tpl.footer)}">
             ${Object.keys(DEFAULT_SETTINGS.invoice_template.labels).map((k) => `<div class="lbl">عنوان: ${k}</div><input class="inp tpl lab" data-k="${k}" value="${esc(tpl.labels[k])}">`).join('')}
